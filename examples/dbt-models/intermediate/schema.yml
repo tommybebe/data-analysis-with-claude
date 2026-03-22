@@ -1,0 +1,323 @@
+# schema.yml — 중간 레이어 모델 정의
+# staging 데이터를 비즈니스 로직 단위로 중간 집계한 뷰 모델들의 명세
+
+version: 2
+
+models:
+  # ============================================================
+  # int_user_daily_activity: 사용자-일자별 활동 집계
+  # ============================================================
+  - name: int_user_daily_activity
+    description: >
+      사용자별 일간 활동 요약 (중간 집계).
+      stg_events + stg_sessions를 결합하여 사용자 단위의 일간 행동 지표를 제공.
+      fct_daily_active_users, fct_retention_cohort 등 여러 mart에서 공통으로 참조.
+
+    config:
+      materialized: view
+
+    columns:
+      - name: user_id
+        description: "사용자 고유 식별자"
+        data_tests:
+          - not_null
+
+      - name: activity_date
+        description: "활동 일자 (KST 기준)"
+        data_tests:
+          - not_null
+
+      - name: platform
+        description: "앱 플랫폼 (ios / android)"
+        data_tests:
+          - not_null
+          - accepted_values:
+              values: ['ios', 'android']
+
+      - name: session_count
+        description: "해당 일자의 세션 수"
+        data_tests:
+          - not_null
+
+      - name: total_events
+        description: "해당 일자의 전체 이벤트 수"
+        data_tests:
+          - not_null
+
+      - name: app_open_count
+        description: "app_open 이벤트 수 (일간 앱 실행 횟수)"
+
+      - name: workout_start_count
+        description: "workout_start 이벤트 수 (운동 시작 횟수)"
+
+      - name: workout_complete_count
+        description: "workout_complete 이벤트 수 (운동 완료 횟수)"
+
+      - name: goal_set_count
+        description: "goal_set 이벤트 수 (목표 설정 횟수)"
+
+      - name: goal_achieved_count
+        description: "goal_achieved 이벤트 수 (목표 달성 횟수)"
+
+      - name: purchase_count
+        description: "purchase 이벤트 수 (구매 횟수)"
+
+      - name: social_share_count
+        description: "social_share 이벤트 수 (소셜 공유 횟수)"
+
+      - name: workout_completion_rate
+        description: >
+          운동 완료율 (workout_complete / workout_start).
+          0~1 범위. workout_start가 0이면 NULL.
+
+      - name: daily_revenue_krw
+        description: "일간 수익 합계 (원화, purchase 이벤트의 price_krw 합산). 구매 없으면 0."
+
+      - name: first_event_at
+        description: "당일 첫 번째 이벤트 발생 시각 (KST)"
+
+      - name: last_event_at
+        description: "당일 마지막 이벤트 발생 시각 (KST)"
+
+      - name: avg_session_duration_minutes
+        description: "세션 평균 지속 시간 (분). 세션 데이터 없으면 0."
+
+      - name: total_session_duration_minutes
+        description: "일간 총 세션 시간 (분). 세션 데이터 없으면 0."
+
+      - name: max_session_duration_minutes
+        description: "당일 최장 세션 지속 시간 (분)"
+
+      - name: abnormal_exit_rate
+        description: "비정상 종료 비율 (0~1). 높을수록 앱 크래시/강제 종료 빈번."
+
+      - name: avg_screens_per_session
+        description: "세션당 평균 화면 전환 수. 탐색 깊이 지표."
+
+      - name: engagement_score
+        description: >
+          앱 참여도 점수 (비공식 지표).
+          총 세션 시간(분) × ln(이벤트 수 + 1).
+          절대값보다 사용자 간 상대 비교에 활용.
+
+  # ============================================================
+  # int_user_rolling_metrics: 사용자별 롤링(이동) 지표
+  # ============================================================
+  - name: int_user_rolling_metrics
+    description: >
+      사용자별 롤링 지표 모델.
+      7일 이동 평균, 전주 대비 참여도 변화율, 연속 활동 일수(streak)를 제공.
+      이탈 조기 경고(engagement_trend='at_risk'), 재참여 타이밍, streak 기반 게임화에 활용.
+      ⚠️ BigQuery 비용: 파티션 필터 없이 전체 조회 시 비용이 클 수 있음. DATE 범위 필터 사용 권장.
+
+    config:
+      materialized: view
+
+    columns:
+      - name: user_id
+        description: "사용자 고유 식별자"
+        data_tests:
+          - not_null
+
+      - name: activity_date
+        description: "활동 일자 (KST 기준)"
+        data_tests:
+          - not_null
+
+      - name: platform
+        description: "앱 플랫폼 (ios / android)"
+
+      - name: total_events
+        description: "당일 이벤트 수"
+
+      - name: session_count
+        description: "당일 세션 수"
+
+      - name: workout_complete_count
+        description: "당일 운동 완료 수"
+
+      - name: daily_revenue_krw
+        description: "당일 수익 (원화)"
+
+      - name: engagement_score
+        description: "당일 참여도 점수"
+
+      - name: events_7d_avg
+        description: "최근 7일 이벤트 수 이동 평균 (당일 포함)"
+
+      - name: sessions_7d_avg
+        description: "최근 7일 세션 수 이동 평균"
+
+      - name: session_minutes_7d_avg
+        description: "최근 7일 평균 세션 시간 이동 평균 (분)"
+
+      - name: engagement_7d_avg
+        description: "최근 7일 참여도 점수 이동 평균"
+
+      - name: revenue_7d_sum
+        description: "최근 7일 누적 수익 (원화). 단기 LTV 추정치."
+
+      - name: workouts_7d_sum
+        description: "최근 7일 누적 운동 완료 수"
+
+      - name: engagement_dod
+        description: "전일 대비 참여도 변화량 (양수 = 증가, 음수 = 감소)"
+
+      - name: engagement_wow
+        description: "전주 동일 요일 대비 참여도 변화량. 이탈 조기 감지 핵심 지표."
+
+      - name: engagement_trend
+        description: >
+          참여도 추세 라벨.
+          - growing: 전주 대비 20% 이상 상승 (활성화 중)
+          - stable: 안정적 (큰 변화 없음)
+          - at_risk: 전주 대비 50% 이상 하락 (이탈 위험)
+        data_tests:
+          - accepted_values:
+              values: ['growing', 'stable', 'at_risk']
+
+      - name: current_streak_days
+        description: >
+          현재 연속 활동 일수 (streak).
+          오늘까지 하루도 빠짐없이 연속으로 활동한 일수.
+          1이면 연속 활동이 오늘부터 시작, 7이면 7일 연속 활동 중.
+        data_tests:
+          - not_null
+
+      - name: streak_label
+        description: >
+          연속 활동 상태 라벨 (게임화/알림 트리거용).
+          - champion: 30일 이상 연속
+          - on_fire: 7일 이상 연속
+          - building: 3일 이상 연속
+          - starting: 3일 미만
+        data_tests:
+          - accepted_values:
+              values: ['champion', 'on_fire', 'building', 'starting']
+
+      - name: prev_activity_date
+        description: "이전 활동일 (NULL이면 첫 활동)"
+
+      - name: days_since_prev_activity
+        description: >
+          이전 활동일로부터 경과일 수.
+          1이면 연속 활동, 2 이상이면 하루 이상 공백.
+          NULL이면 첫 활동일.
+
+  # ============================================================
+  # int_user_metrics: 사용자별 누적 지표 요약
+  # ============================================================
+  - name: int_user_metrics
+    description: >
+      사용자별 누적 활동 지표 요약.
+      첫 이벤트부터 마지막 이벤트까지 전체 기간의 행동 집계.
+      사용자 세그멘테이션(activity_segment, revenue_segment) 및 LTV 추정에 활용.
+
+    config:
+      materialized: view
+
+    columns:
+      - name: user_id
+        description: "사용자 고유 식별자"
+        data_tests:
+          - unique
+          - not_null
+
+      - name: first_activity_date
+        description: "최초 활동 일자 (KST). 가입일과 다를 수 있음."
+
+      - name: last_activity_date
+        description: "최근 활동 일자 (KST). 이탈 감지에 사용."
+
+      - name: total_active_days
+        description: "전체 활동 일수 (고유 날짜 수)"
+        data_tests:
+          - not_null
+
+      - name: lifetime_events
+        description: "전체 기간 이벤트 수"
+
+      - name: lifetime_sessions
+        description: "전체 기간 세션 수"
+
+      - name: lifetime_workouts
+        description: "전체 기간 운동 완료 수"
+
+      - name: lifetime_purchases
+        description: "전체 기간 구매 수"
+
+      - name: lifetime_revenue_krw
+        description: "전체 기간 수익 합계 (원화). LTV(생애 가치) 기초 지표."
+
+      - name: avg_daily_events
+        description: "활동일 기준 일평균 이벤트 수"
+
+      - name: avg_daily_session_minutes
+        description: "활동일 기준 일평균 세션 시간 (분)"
+
+      - name: avg_workout_completion_rate
+        description: "전체 기간 평균 운동 완료율"
+
+      - name: max_daily_events
+        description: "최고 일간 이벤트 수 (피크 활동 지표)"
+
+      - name: signup_date_kst
+        description: "가입 일자 (KST)"
+
+      - name: days_since_signup
+        description: "가입 후 경과일"
+
+      - name: subscription_tier
+        description: "구독 등급 (free / premium / premium_plus)"
+        data_tests:
+          - accepted_values:
+              values: ['free', 'premium', 'premium_plus']
+
+      - name: referral_source
+        description: "유입 채널"
+
+      - name: country
+        description: "사용자 국가 코드"
+
+      - name: platform
+        description: "앱 플랫폼"
+
+      - name: age_group
+        description: "연령대"
+
+      - name: is_activated
+        description: >
+          활성화 여부 (boolean).
+          정의: 가입 후 7일 이내에 첫 이벤트 발생 시 true.
+          온보딩 퍼널 분석의 핵심 지표.
+
+      - name: days_to_first_activity
+        description: "가입 후 첫 앱 활동까지 소요 일수. 0이면 가입 당일 활동."
+
+      - name: days_since_last_activity
+        description: "최근 활동 이후 경과일 (오늘 - last_activity_date). 이탈 위험 지표."
+
+      - name: activity_segment
+        description: >
+          활동 빈도 기반 사용자 세그먼트.
+          - power_user: 활동일 20일 이상
+          - regular: 활동일 10~19일
+          - casual: 활동일 3~9일
+          - dormant: 활동일 3일 미만 (최근 30일 내 활동)
+          - churned: 30일 이상 미접속
+        data_tests:
+          - not_null
+          - accepted_values:
+              values: ['power_user', 'regular', 'casual', 'dormant', 'churned']
+
+      - name: revenue_segment
+        description: >
+          수익 기반 사용자 세그먼트.
+          - high_value: 누적 수익 10만원 이상
+          - mid_value: 누적 수익 1만원 이상
+          - low_value: 구매 이력 있음 (1만원 미만)
+          - non_paying: 구매 이력 없음
+        data_tests:
+          - not_null
+          - accepted_values:
+              values: ['high_value', 'mid_value', 'low_value', 'non_paying']

@@ -1,0 +1,85 @@
+# dbt_project.yml
+# 데이터 분석 하니스 코스 - dbt 프로젝트 설정
+# BigQuery on-demand 환경에 최적화된 구성
+
+name: 'mobile_analytics'
+version: '1.0.0'
+config-version: 2
+
+# dbt가 사용하는 프로파일 이름 (profiles.yml에서 참조)
+profile: 'mobile_analytics'
+
+# 모델 경로 설정
+model-paths: ["models"]
+analysis-paths: ["analyses"]
+test-paths: ["tests"]
+seed-paths: ["seeds"]
+macro-paths: ["macros"]
+snapshot-paths: ["snapshots"]
+
+# 대상 디렉토리 및 정리 대상
+target-path: "target"
+clean-targets:
+  - "target"
+  - "dbt_packages"
+
+# 패키지 설정 — dbt-utils, dbt-expectations 활용
+packages-install-path: "dbt_packages"
+
+# ============================================================
+# 모델 설정
+# ============================================================
+models:
+  mobile_analytics:
+
+    # 스테이징 레이어: 원시 데이터 클렌징 및 정규화
+    # - VIEW로 구체화 (스캔 비용 절감: mart에서 한 번만 구체화)
+    staging:
+      +materialized: view
+      +schema: staging
+      # 스테이징은 BigQuery 비용 최소화를 위해 view 사용
+      # 실제 데이터 스캔은 mart 구체화 시 1회만 발생
+
+    # 중간 레이어: 비즈니스 로직 중간 집계
+    # - VIEW로 구체화 (staging과 동일한 비용 절감 전략)
+    intermediate:
+      +materialized: view
+      +schema: intermediate
+
+    # 마트 레이어: 최종 분석 지표 테이블
+    # - TABLE로 구체화 + 파티션 적용 (반복 쿼리 비용 최소화)
+    marts:
+      +materialized: table
+      +schema: marts
+
+# ============================================================
+# 시드 설정
+# ============================================================
+seeds:
+  mobile_analytics:
+    +schema: seeds
+
+# ============================================================
+# 스냅샷 설정
+# ============================================================
+snapshots:
+  mobile_analytics:
+    +target_schema: snapshots
+
+# ============================================================
+# 변수 설정 (환경별 오버라이드 가능)
+# ============================================================
+vars:
+  # 분석 기준 타임존
+  timezone: 'Asia/Seoul'
+
+  # 코호트 리텐션 추적 최대 주차 수
+  max_retention_weeks: 12
+
+  # BigQuery 비용 제어: 대용량 테이블 스캔 시 partition filter 강제
+  # `dbt run --vars '{"enforce_partition_filter": true}'` 로 오버라이드 가능
+  enforce_partition_filter: false
+
+  # 데이터 신선도 검사 임계값 (시간 단위)
+  freshness_warn_hours: 24
+  freshness_error_hours: 48

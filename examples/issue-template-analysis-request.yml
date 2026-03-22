@@ -1,0 +1,171 @@
+# GitHub Issue 템플릿: 데이터 분석 요청
+# 파일 위치: .github/ISSUE_TEMPLATE/analysis-request.yml
+#
+# 이 템플릿은 수강생이 starter repo의 .github/ISSUE_TEMPLATE/ 디렉토리에
+# 직접 작성하는 것을 목표로 합니다. 아래는 완성된 참고 예시입니다.
+#
+# GitHub Issue Forms(YAML) 형식을 사용하여 구조화된 분석 요청을 생성합니다.
+# 7단계 자동 워크플로(auto-analyze → stage:1-parse → ... → done)의 입력으로 사용됩니다.
+
+name: "📊 데이터 분석 요청"
+description: "DAU/MAU 등 데이터 분석을 요청합니다. 자동 분석 워크플로의 입력으로 사용됩니다."
+title: "[분석] "
+labels:
+  - "분석 요청"
+body:
+  # ── 섹션 1: 분석 제목 및 배경 ──
+  - type: markdown
+    attributes:
+      value: |
+        ## 분석 요청서
+        아래 필드를 작성하면 구조화된 분석 요청이 생성됩니다.
+        `auto-analyze` 라벨을 부착하면 7단계 자동 워크플로가 시작됩니다.
+
+  - type: input
+    id: analysis-title
+    attributes:
+      label: "분석 제목"
+      description: "분석의 핵심을 요약하는 짧은 제목 (예: 2026년 1분기 DAU/MAU 트렌드 분석)"
+      placeholder: "2026년 1분기 DAU/MAU 트렌드 분석"
+    validations:
+      required: true
+
+  # ── 섹션 2: 문제 정의 ──
+  - type: textarea
+    id: problem-statement
+    attributes:
+      label: "문제 정의 (Problem Statement)"
+      description: |
+        분석을 통해 답하고자 하는 핵심 질문을 명확하게 작성합니다.
+        - 무엇을 알고 싶은가?
+        - 왜 이 분석이 필요한가?
+        - 어떤 의사결정에 활용되는가?
+      placeholder: |
+        FitTrack 앱의 2026년 1분기 DAU와 MAU 추이를 파악하고,
+        DAU/MAU 비율(stickiness)의 변화를 플랫폼(iOS/Android)별로 비교하라.
+        이 분석 결과는 Q2 사용자 리텐션 전략 수립에 활용될 예정이다.
+    validations:
+      required: true
+
+  # ── 섹션 3: 기대 산출물 ──
+  - type: textarea
+    id: deliverables
+    attributes:
+      label: "기대 산출물 (Expected Deliverables)"
+      description: |
+        분석 완료 시 생성되어야 하는 구체적인 산출물 목록을 작성합니다.
+        각 산출물의 형태(차트, 테이블, 요약문 등)를 명시해 주세요.
+      placeholder: |
+        - 일별 DAU 추이 차트 (라인 차트, 플랫폼별 색상 구분)
+        - 월별 MAU 추이 차트 (바 차트)
+        - DAU/MAU 비율 트렌드 (플랫폼별 라인 차트)
+        - 주요 발견 요약 (3~5문장)
+      value: |
+        - 일별 DAU 추이 차트
+        - 월별 MAU 추이 차트
+        - DAU/MAU 비율 트렌드 (플랫폼별)
+        - 주요 발견 요약 (3~5문장)
+    validations:
+      required: true
+
+  # ── 섹션 4: 데이터 범위 ──
+  - type: input
+    id: date-range-start
+    attributes:
+      label: "분석 시작일"
+      description: "분석 대상 데이터의 시작 날짜 (YYYY-MM-DD)"
+      placeholder: "2026-01-01"
+    validations:
+      required: true
+
+  - type: input
+    id: date-range-end
+    attributes:
+      label: "분석 종료일"
+      description: "분석 대상 데이터의 종료 날짜 (YYYY-MM-DD)"
+      placeholder: "2026-03-31"
+    validations:
+      required: true
+
+  # ── 섹션 5: 세그먼트 ──
+  - type: dropdown
+    id: segment-primary
+    attributes:
+      label: "주요 세그먼트"
+      description: "분석 결과를 세분화할 주요 기준을 선택합니다."
+      options:
+        - "전체 (세그먼트 없음)"
+        - "platform (iOS / Android)"
+        - "signup_source (organic / paid / referral)"
+        - "subscription_tier (free / premium)"
+        - "country"
+      default: 1
+    validations:
+      required: true
+
+  - type: input
+    id: segment-additional
+    attributes:
+      label: "추가 세그먼트 (선택사항)"
+      description: "위 옵션 외 추가 세그먼트가 필요하면 자유 입력 (예: device_model, app_version)"
+      placeholder: "app_version"
+    validations:
+      required: false
+
+  # ── 섹션 6: 분석 유형 ──
+  - type: dropdown
+    id: analysis-type
+    attributes:
+      label: "분석 유형"
+      description: "요청하는 분석의 유형을 선택합니다."
+      options:
+        - "트렌드 분석 (시계열 추이)"
+        - "비교 분석 (세그먼트 간 비교)"
+        - "코호트 분석 (가입 시점 기반 리텐션)"
+        - "이상 탐지 (급변 구간 식별)"
+        - "복합 분석 (위 유형 조합)"
+      default: 0
+    validations:
+      required: true
+
+  # ── 섹션 7: 우선순위 ──
+  - type: dropdown
+    id: priority
+    attributes:
+      label: "우선순위"
+      description: "분석 요청의 긴급도를 선택합니다."
+      options:
+        - "🔴 긴급 (1영업일 이내)"
+        - "🟡 보통 (3영업일 이내)"
+        - "🟢 낮음 (1주 이내)"
+      default: 1
+    validations:
+      required: true
+
+  # ── 섹션 8: 추가 컨텍스트 ──
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: "추가 컨텍스트 (선택사항)"
+      description: |
+        분석에 참고할 추가 정보가 있으면 작성합니다.
+        예: 관련 이전 분석 이슈 번호, 특이 사항, 제외 조건 등
+      placeholder: |
+        - 테스트 계정(user_id: test_*)은 분석에서 제외
+        - 이전 분석 참고: #12
+    validations:
+      required: false
+
+  # ── 섹션 9: 메트릭 정의 확인 ──
+  - type: checkboxes
+    id: metric-definitions
+    attributes:
+      label: "메트릭 정의 확인"
+      description: "사용할 메트릭의 정의를 확인합니다. 기본 정의와 다를 경우 추가 컨텍스트에 명시해 주세요."
+      options:
+        - label: "DAU = 해당 일자에 1회 이상 이벤트를 발생시킨 고유 사용자 수"
+          required: false
+        - label: "MAU = 해당 월에 1회 이상 이벤트를 발생시킨 고유 사용자 수"
+          required: false
+        - label: "Stickiness = DAU / MAU (일별 활성 사용자가 월별 활성 사용자에서 차지하는 비율)"
+          required: false

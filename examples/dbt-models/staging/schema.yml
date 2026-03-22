@@ -1,0 +1,268 @@
+# schema.yml — 스테이징 레이어 모델 정의
+# 원시 데이터를 클렌징·정규화한 뷰 모델들의 컬럼 정의 및 테스트 명세
+
+version: 2
+
+models:
+  # ============================================================
+  # stg_events: 이벤트 로그 스테이징
+  # ============================================================
+  - name: stg_events
+    description: >
+      클렌징된 앱 이벤트 로그.
+      UTC 타임스탬프를 KST로 변환하고, NULL user_id 및 미래 이벤트를 필터링.
+      JSON event_properties에서 주요 필드(screen_name, workout_type, price_krw 등)를 추출.
+
+    config:
+      materialized: view
+
+    columns:
+      - name: event_id
+        description: "이벤트 고유 식별자 (UUID v4). raw_events에서 승계."
+        data_tests:
+          - unique
+          - not_null
+
+      - name: event_timestamp
+        description: "이벤트 발생 시각 (UTC)"
+        data_tests:
+          - not_null
+
+      - name: event_timestamp_kst
+        description: "이벤트 발생 시각 (KST, UTC+9). DAU/MAU 집계의 기준 시각."
+        data_tests:
+          - not_null
+
+      - name: event_date_kst
+        description: "이벤트 발생 일자 (KST 기준). DAU 집계의 파티션 기준."
+        data_tests:
+          - not_null
+
+      - name: user_id
+        description: "사용자 고유 식별자. stg_users.user_id 참조."
+        data_tests:
+          - not_null
+
+      - name: session_id
+        description: "세션 고유 식별자. stg_sessions.session_id 참조."
+        data_tests:
+          - not_null
+
+      - name: event_type
+        description: "이벤트 유형 코드. 사전 정의된 10가지 유형만 허용."
+        data_tests:
+          - not_null
+          - accepted_values:
+              values:
+                - app_open
+                - app_close
+                - screen_view
+                - workout_start
+                - workout_complete
+                - goal_set
+                - goal_achieved
+                - social_share
+                - purchase
+                - push_notification_open
+
+      - name: screen_name
+        description: "이벤트 발생 화면명 (event_properties.screen_name 추출, NULL 가능)"
+
+      - name: workout_type
+        description: "운동 유형 (event_properties.workout_type 추출. workout_start/complete 이벤트에만 존재)"
+
+      - name: item_name
+        description: "구매 상품명 (event_properties.item_name 추출. purchase 이벤트에만 존재)"
+
+      - name: price_krw
+        description: "구매 금액 (원화, event_properties.price_krw 추출. purchase 이벤트에만 존재)"
+
+      - name: platform
+        description: "앱 플랫폼 (ios / android)"
+        data_tests:
+          - not_null
+          - accepted_values:
+              values: ['ios', 'android']
+
+      - name: app_version
+        description: "앱 버전 (semver 형식, 예: 3.2.1)"
+        data_tests:
+          - not_null
+
+      - name: device_model
+        description: "디바이스 모델명 (예: iPhone 16 Pro, Galaxy S25)"
+
+      - name: _loaded_at
+        description: "데이터 적재 시각 (파이프라인 메타 컬럼)"
+        data_tests:
+          - not_null
+
+  # ============================================================
+  # stg_users: 사용자 프로필 스테이징
+  # ============================================================
+  - name: stg_users
+    description: >
+      정규화된 사용자 프로필.
+      가입 시각 KST 변환, 가입 후 경과일 파생 컬럼 추가.
+      NULL user_id 레코드 제거.
+
+    config:
+      materialized: view
+
+    columns:
+      - name: user_id
+        description: "사용자 고유 식별자 (UUID v4)"
+        data_tests:
+          - unique
+          - not_null
+
+      - name: signup_timestamp
+        description: "가입 시각 (UTC)"
+        data_tests:
+          - not_null
+
+      - name: signup_date_kst
+        description: "가입 일자 (KST 기준). 코호트 리텐션 분석의 기준일."
+        data_tests:
+          - not_null
+
+      - name: days_since_signup
+        description: "가입 후 경과일 (오늘 - 가입일, KST 기준). 리텐션 버킷 분류에 사용."
+        data_tests:
+          - not_null
+
+      - name: country
+        description: "사용자 국가 코드 (ISO 3166-1 alpha-2, 예: KR)"
+        data_tests:
+          - not_null
+
+      - name: language
+        description: "사용자 언어 코드 (예: ko, en)"
+
+      - name: platform
+        description: "앱 플랫폼 (ios / android)"
+        data_tests:
+          - not_null
+          - accepted_values:
+              values: ['ios', 'android']
+
+      - name: device_type
+        description: "디바이스 유형 (smartphone / tablet)"
+        data_tests:
+          - not_null
+          - accepted_values:
+              values: ['smartphone', 'tablet']
+
+      - name: initial_app_version
+        description: "가입 시점 앱 버전 (semver 형식)"
+        data_tests:
+          - not_null
+
+      - name: subscription_tier
+        description: "구독 등급 (free / premium / premium_plus)"
+        data_tests:
+          - not_null
+          - accepted_values:
+              values: ['free', 'premium', 'premium_plus']
+
+      - name: age_group
+        description: "연령대 (18-24, 25-34, 35-44, 45-54, 55+). 미입력 가능."
+
+      - name: referral_source
+        description: "유입 채널 (organic, paid_search, social, referral)"
+        data_tests:
+          - accepted_values:
+              values: ['organic', 'paid_search', 'social', 'referral']
+
+      - name: is_active
+        description: "활성 사용자 여부 (boolean)"
+        data_tests:
+          - not_null
+
+      - name: last_active_date
+        description: "마지막 활동 일자"
+
+      - name: _loaded_at
+        description: "데이터 적재 시각"
+        data_tests:
+          - not_null
+
+  # ============================================================
+  # stg_sessions: 세션 데이터 스테이징
+  # ============================================================
+  - name: stg_sessions
+    description: >
+      정리된 세션 데이터.
+      비정상 종료(session_end IS NULL) 처리: session_start + 5분으로 대체.
+      세션 길이를 초 단위에서 분 단위로 변환.
+
+    config:
+      materialized: view
+
+    columns:
+      - name: session_id
+        description: "세션 고유 식별자 (UUID v4)"
+        data_tests:
+          - unique
+          - not_null
+
+      - name: user_id
+        description: "사용자 식별자. stg_users.user_id 참조."
+        data_tests:
+          - not_null
+
+      - name: session_start
+        description: "세션 시작 시각 (UTC)"
+        data_tests:
+          - not_null
+
+      - name: session_date_kst
+        description: "세션 시작 일자 (KST 기준)"
+        data_tests:
+          - not_null
+
+      - name: session_end
+        description: "세션 종료 시각 (UTC). 비정상 종료 시 session_start + 5분으로 대체."
+        data_tests:
+          - not_null
+
+      - name: is_abnormal_exit
+        description: "비정상 종료 여부 (boolean). true이면 원본 session_end가 NULL이었음."
+        data_tests:
+          - not_null
+
+      - name: session_duration_minutes
+        description: "세션 지속 시간 (분). 비정상 종료 시 5분으로 처리됨."
+
+      - name: event_count
+        description: "세션 내 이벤트 수"
+        data_tests:
+          - not_null
+
+      - name: screen_count
+        description: "세션 내 화면 전환 수 (screen_view 이벤트 수)"
+        data_tests:
+          - not_null
+
+      - name: platform
+        description: "앱 플랫폼 (ios / android)"
+        data_tests:
+          - accepted_values:
+              values: ['ios', 'android']
+
+      - name: app_version
+        description: "앱 버전 (semver 형식)"
+
+      - name: device_model
+        description: "디바이스 모델명"
+
+      - name: os_version
+        description: "OS 버전 (예: iOS 19.0, Android 16)"
+
+      - name: ip_country
+        description: "접속 국가 코드 (IP 기반)"
+
+      - name: _loaded_at
+        description: "데이터 적재 시각"
+        data_tests:
+          - not_null

@@ -1,0 +1,78 @@
+# profiles.yml.example
+# BigQuery on-demand 연결 설정 예시
+# 실제 사용 시: ~/.dbt/profiles.yml 에 복사 후 본인 설정으로 수정
+#
+# ⚠️  이 파일은 예시입니다. 실제 프로젝트 레포에 커밋하지 마세요.
+#     GCP 프로젝트 ID, 서비스 계정 정보 등 민감 정보가 포함될 수 있습니다.
+
+mobile_analytics:
+  target: dev  # 기본 실행 환경 (dev / prod)
+
+  outputs:
+    # ============================================================
+    # 로컬 개발 환경 (BigQuery on-demand, 개인 서비스 계정)
+    # ============================================================
+    dev:
+      type: bigquery
+      method: service-account
+
+      # GCP 프로젝트 ID (환경 변수로 관리 권장)
+      project: "{{ env_var('BQ_PROJECT_ID') }}"
+
+      # 데이터셋 기본값 (dbt_project.yml의 schema 설정으로 오버라이드됨)
+      dataset: dbt_dev
+
+      # 서비스 계정 키 파일 경로
+      keyfile: "{{ env_var('GOOGLE_APPLICATION_CREDENTIALS') }}"
+
+      # BigQuery on-demand 설정
+      # on-demand: 쿼리 실행량(TB) 기준 과금, 예약 슬롯 불필요
+      # 실습 범위(합성 데이터 ~500K행)에서 비용 최소
+      location: asia-northeast3  # 서울 리전
+      timeout_seconds: 300
+      retries: 3
+
+      # 스레드 수: 동시 실행 모델 수 (on-demand는 4 이하 권장)
+      threads: 4
+
+      # 비용 제어: 쿼리당 최대 바이트 처리량 제한 (1GB)
+      # 초과 시 쿼리 실패 → 의도치 않은 대용량 스캔 방지
+      maximum_bytes_billed: 1073741824  # 1GB = 1024^3 bytes
+
+    # ============================================================
+    # CI/CD 환경 (GitHub Actions, 서비스 계정 JSON을 시크릿으로 관리)
+    # ============================================================
+    ci:
+      type: bigquery
+      method: service-account-json
+
+      project: "{{ env_var('BQ_PROJECT_ID') }}"
+      dataset: dbt_ci
+      location: asia-northeast3
+      timeout_seconds: 300
+      retries: 1
+      threads: 2
+
+      # GitHub Secret에서 JSON 내용을 직접 환경 변수로 주입
+      # GitHub Actions에서: echo "$GCP_SA_KEY" > /tmp/sa.json
+      keyfile_json: "{{ env_var('GCP_SA_KEY_JSON') }}"
+
+      maximum_bytes_billed: 1073741824
+
+    # ============================================================
+    # 프로덕션 환경 (별도 프로젝트 또는 데이터셋 분리)
+    # ============================================================
+    prod:
+      type: bigquery
+      method: service-account
+
+      project: "{{ env_var('BQ_PROD_PROJECT_ID') }}"
+      dataset: dbt_prod
+      keyfile: "{{ env_var('GOOGLE_APPLICATION_CREDENTIALS') }}"
+      location: asia-northeast3
+      timeout_seconds: 600
+      retries: 3
+      threads: 8
+
+      # 프로덕션은 비용 제한 높게 설정 (10GB)
+      maximum_bytes_billed: 10737418240  # 10GB

@@ -1,0 +1,94 @@
+# seeds/seeds.yml
+# 시드(Seed) 파일 컬럼 정의 및 데이터 테스트
+#
+# ────────────────────────────────────────────────────────────────────────
+# dbt Seed란?
+# ────────────────────────────────────────────────────────────────────────
+# CSV 파일을 `dbt seed` 명령으로 BigQuery에 테이블로 적재하는 기능입니다.
+#
+# 사용 시나리오:
+#   - 이벤트 유형 메타데이터 (event_type_metadata.csv)
+#   - 국가 코드 - 국가명 매핑 테이블
+#   - A/B 테스트 코호트 정의
+#   - 마케팅 채널 비용 데이터 (수동 입력)
+#
+# 실행 방법:
+#   dbt seed                               # 전체 seed 실행
+#   dbt seed --select event_type_metadata  # 특정 seed만 실행
+#   dbt seed --full-refresh                # 테이블 완전 재생성
+#
+# 참조 방법 (모델 SQL에서):
+#   {{ ref('event_type_metadata') }}       # 다른 모델과 동일하게 ref() 사용
+
+version: 2
+
+seeds:
+  # ============================================================
+  # event_type_metadata: 이벤트 유형 참조 데이터
+  # ============================================================
+  - name: event_type_metadata
+    description: >
+      앱 이벤트 유형 메타데이터. 이벤트 코드(event_type)에 대한 한/영 표시명,
+      카테고리, 전환 이벤트 여부, 설명을 제공합니다.
+      stg_events와 조인하여 리포트에서 사람이 읽기 쉬운 레이블로 표시하는 데 활용.
+
+    # 컬럼 타입 명시 (CSV는 기본적으로 모두 문자열로 적재됨)
+    config:
+      column_types:
+        event_type: string
+        display_name_ko: string
+        display_name_en: string
+        category: string
+        # boolean 컬럼은 'true'/'false' 문자열로 저장된 경우 명시 필요
+        is_conversion_event: boolean
+        description_ko: string
+
+    columns:
+      - name: event_type
+        description: "이벤트 유형 코드 (stg_events.event_type과 조인 키)"
+        data_tests:
+          - unique
+          - not_null
+          - accepted_values:
+              values:
+                - app_open
+                - app_close
+                - screen_view
+                - workout_start
+                - workout_complete
+                - goal_set
+                - goal_achieved
+                - social_share
+                - purchase
+                - push_notification_open
+
+      - name: display_name_ko
+        description: "이벤트 유형 한국어 표시명 (리포트·대시보드용)"
+        data_tests:
+          - not_null
+
+      - name: display_name_en
+        description: "이벤트 유형 영어 표시명"
+        data_tests:
+          - not_null
+
+      - name: category
+        description: >
+          이벤트 카테고리 분류.
+          - engagement: 기본 앱 사용 이벤트
+          - navigation: 화면 이동 이벤트
+          - core_feature: 핵심 기능(운동·목표) 이벤트
+          - viral: 바이럴 확산 관련 이벤트
+          - monetization: 수익 관련 이벤트
+        data_tests:
+          - not_null
+          - accepted_values:
+              values: ['engagement', 'navigation', 'core_feature', 'viral', 'monetization']
+
+      - name: is_conversion_event
+        description: "전환 이벤트 여부. true이면 핵심 목표 달성 이벤트 (workout_complete, goal_achieved, purchase)."
+        data_tests:
+          - not_null
+
+      - name: description_ko
+        description: "이벤트 상세 설명 (한국어)"
