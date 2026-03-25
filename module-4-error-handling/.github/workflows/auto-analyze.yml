@@ -1,0 +1,678 @@
+# Module 4: End-to-End Integration & Error Handling
+# 7-Stage Orchestration Workflow with Label Chaining and Error Recovery
+#
+# This is a REFERENCE TEMPLATE — GitHub Actions workflows must be in the root
+# repository's .github/workflows/ to execute. This file demonstrates the
+# complete pipeline architecture for learners to study and adapt.
+#
+# Pipeline Flow:
+#   Issue labeled "auto-analyze"
+#     → stage:1-parse → stage:2-define → stage:3-deliverables
+#     → stage:4-spec → stage:5-extract → stage:6-analyze → stage:7-report
+#     → done (PR created with analysis report)
+#
+# Error Handling:
+#   Any stage failure → stage:error label + error comment with category anchor
+#   Recovery: remove stage:error, re-attach failed stage label to resume
+
+name: Auto Analyze Pipeline (7-Stage)
+
+on:
+  issues:
+    types: [labeled]
+
+permissions:
+  issues: write
+  contents: write
+  pull-requests: write
+
+jobs:
+  # ============================================================
+  # STAGE 1: Issue Parsing
+  # Trigger: issue labeled "auto-analyze" or "stage:1-parse"
+  # Output: Structured analysis request extracted from issue body
+  # ============================================================
+  stage-1-parse:
+    if: |
+      github.event.label.name == 'auto-analyze' ||
+      github.event.label.name == 'stage:1-parse'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install uv && uv sync
+
+      - name: Run Stage 1 — Parse issue
+        id: stage1
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.CLAUDE_TOKEN }}
+          prompt_file: .claude/prompts/stage-1-parse.md
+          issue_number: ${{ github.event.issue.number }}
+        env:
+          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+
+      - name: Transition to Stage 2 on success
+        if: success()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issue = context.issue.number;
+            // Add stage completion anchor comment
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issue,
+              body: `<!-- stage:1-complete -->\n✅ **Stage 1 완료**: 이슈 파싱 완료. 분석 요청이 구조화되었습니다.\n\n다음 단계: stage:2-define`
+            });
+            // Remove current trigger label, add next stage label
+            try {
+              await github.rest.issues.removeLabel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue,
+                name: context.payload.label.name
+              });
+            } catch (e) { /* label may already be removed */ }
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issue,
+              labels: ['stage:2-define']
+            });
+
+      - name: Handle Stage 1 failure
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issue = context.issue.number;
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issue,
+              body: `<!-- error-category: AGENT -->\n❌ **Stage 1 실패**: 이슈 파싱 중 오류가 발생했습니다.\n\n**복구 방법**: \`stage:error\` 레이블을 제거하고 \`stage:1-parse\` 레이블을 다시 추가하세요.`
+            });
+            try {
+              await github.rest.issues.removeLabel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue,
+                name: context.payload.label.name
+              });
+            } catch (e) {}
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issue,
+              labels: ['stage:error']
+            });
+
+  # ============================================================
+  # STAGE 2: Problem Definition
+  # Trigger: issue labeled "stage:2-define"
+  # Output: Analysis scope, success metrics, constraints defined
+  # ============================================================
+  stage-2-define:
+    if: github.event.label.name == 'stage:2-define'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install uv && uv sync
+
+      - name: Run Stage 2 — Define problem
+        id: stage2
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.CLAUDE_TOKEN }}
+          prompt_file: .claude/prompts/stage-2-define.md
+          issue_number: ${{ github.event.issue.number }}
+        env:
+          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+
+      - name: Transition to Stage 3 on success
+        if: success()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issue = context.issue.number;
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issue,
+              body: `<!-- stage:2-complete -->\n✅ **Stage 2 완료**: 문제 정의 완료. 분석 범위와 성공 지표가 확정되었습니다.\n\n다음 단계: stage:3-deliverables`
+            });
+            try {
+              await github.rest.issues.removeLabel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue,
+                name: 'stage:2-define'
+              });
+            } catch (e) {}
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issue,
+              labels: ['stage:3-deliverables']
+            });
+
+      - name: Handle Stage 2 failure
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issue = context.issue.number;
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issue,
+              body: `<!-- error-category: AGENT -->\n❌ **Stage 2 실패**: 문제 정의 중 오류가 발생했습니다.\n\n**복구 방법**: \`stage:error\` 레이블을 제거하고 \`stage:2-define\` 레이블을 다시 추가하세요.`
+            });
+            try {
+              await github.rest.issues.removeLabel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue,
+                name: 'stage:2-define'
+              });
+            } catch (e) {}
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issue,
+              labels: ['stage:error']
+            });
+
+  # ============================================================
+  # STAGE 3: Deliverables Specification
+  # Trigger: issue labeled "stage:3-deliverables"
+  # Output: List of required analysis outputs (tables, charts, report)
+  # ============================================================
+  stage-3-deliverables:
+    if: github.event.label.name == 'stage:3-deliverables'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install uv && uv sync
+
+      - name: Run Stage 3 — Specify deliverables
+        id: stage3
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.CLAUDE_TOKEN }}
+          prompt_file: .claude/prompts/stage-3-deliverables.md
+          issue_number: ${{ github.event.issue.number }}
+        env:
+          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+
+      - name: Transition to Stage 4 on success
+        if: success()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issue = context.issue.number;
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issue,
+              body: `<!-- stage:3-complete -->\n✅ **Stage 3 완료**: 산출물 명세 완료. 분석 결과물 목록이 확정되었습니다.\n\n다음 단계: stage:4-spec`
+            });
+            try {
+              await github.rest.issues.removeLabel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue,
+                name: 'stage:3-deliverables'
+              });
+            } catch (e) {}
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issue,
+              labels: ['stage:4-spec']
+            });
+
+      - name: Handle Stage 3 failure
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issue = context.issue.number;
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issue,
+              body: `<!-- error-category: AGENT -->\n❌ **Stage 3 실패**: 산출물 명세 중 오류가 발생했습니다.\n\n**복구 방법**: \`stage:error\` 레이블을 제거하고 \`stage:3-deliverables\` 레이블을 다시 추가하세요.`
+            });
+            try {
+              await github.rest.issues.removeLabel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue,
+                name: 'stage:3-deliverables'
+              });
+            } catch (e) {}
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issue,
+              labels: ['stage:error']
+            });
+
+  # ============================================================
+  # STAGE 4: Analysis Specification
+  # Trigger: issue labeled "stage:4-spec"
+  # Output: SQL query plan, dbt model selection, marimo notebook plan
+  # ============================================================
+  stage-4-spec:
+    if: github.event.label.name == 'stage:4-spec'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install uv && uv sync
+
+      - name: Run Stage 4 — Build analysis spec
+        id: stage4
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.CLAUDE_TOKEN }}
+          prompt_file: .claude/prompts/stage-4-spec.md
+          issue_number: ${{ github.event.issue.number }}
+        env:
+          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+
+      - name: Transition to Stage 5 on success
+        if: success()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issue = context.issue.number;
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issue,
+              body: `<!-- stage:4-complete -->\n✅ **Stage 4 완료**: 분석 명세 완료. SQL 쿼리 계획과 dbt 모델 선택이 완료되었습니다.\n\n다음 단계: stage:5-extract`
+            });
+            try {
+              await github.rest.issues.removeLabel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue,
+                name: 'stage:4-spec'
+              });
+            } catch (e) {}
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issue,
+              labels: ['stage:5-extract']
+            });
+
+      - name: Handle Stage 4 failure
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issue = context.issue.number;
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issue,
+              body: `<!-- error-category: AGENT -->\n❌ **Stage 4 실패**: 분석 명세 중 오류가 발생했습니다.\n\n**복구 방법**: \`stage:error\` 레이블을 제거하고 \`stage:4-spec\` 레이블을 다시 추가하세요.`
+            });
+            try {
+              await github.rest.issues.removeLabel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue,
+                name: 'stage:4-spec'
+              });
+            } catch (e) {}
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issue,
+              labels: ['stage:error']
+            });
+
+  # ============================================================
+  # STAGE 5: Data Extraction (Cost-Sensitive)
+  # Trigger: issue labeled "stage:5-extract"
+  # Output: dbt run results, BigQuery cost log (evidence/)
+  # NOTE: Most cost-sensitive stage — enforces 1GB scan limit via bq-cost-guard hook
+  # ============================================================
+  stage-5-extract:
+    if: github.event.label.name == 'stage:5-extract'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install uv && uv sync
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Install dbt
+        run: uv pip install dbt-bigquery
+
+      - name: Run Stage 5 — Extract data
+        id: stage5
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.CLAUDE_TOKEN }}
+          prompt_file: .claude/prompts/stage-5-extract.md
+          issue_number: ${{ github.event.issue.number }}
+        env:
+          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ env.GOOGLE_APPLICATION_CREDENTIALS }}
+          BQ_DATASET_RAW: ${{ vars.BQ_DATASET_RAW || 'raw' }}
+          BQ_DATASET_ANALYTICS: ${{ vars.BQ_DATASET_ANALYTICS || 'analytics' }}
+          BQ_COST_LIMIT_BYTES: ${{ vars.BQ_COST_LIMIT_BYTES || '1073741824' }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+
+      - name: Upload cost log artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: query-cost-log-${{ github.event.issue.number }}
+          path: evidence/query_cost_log.json
+          if-no-files-found: warn
+
+      - name: Transition to Stage 6 on success
+        if: success()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issue = context.issue.number;
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issue,
+              body: `<!-- stage:5-complete -->\n✅ **Stage 5 완료**: 데이터 추출 완료. dbt 모델이 실행되었으며 비용 로그가 기록되었습니다.\n\n다음 단계: stage:6-analyze`
+            });
+            try {
+              await github.rest.issues.removeLabel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue,
+                name: 'stage:5-extract'
+              });
+            } catch (e) {}
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issue,
+              labels: ['stage:6-analyze']
+            });
+
+      - name: Handle Stage 5 failure — Infrastructure error
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issue = context.issue.number;
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issue,
+              body: `<!-- error-category: INFRA -->\n❌ **Stage 5 실패**: 데이터 추출 중 인프라 오류가 발생했습니다.\n\n**가능한 원인**: BigQuery 인증 실패, API 할당량 초과, 테이블 미존재\n**복구 방법**: 인프라 문제를 해결한 후 \`stage:error\` 레이블을 제거하고 \`stage:5-extract\` 레이블을 다시 추가하세요.`
+            });
+            try {
+              await github.rest.issues.removeLabel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue,
+                name: 'stage:5-extract'
+              });
+            } catch (e) {}
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issue,
+              labels: ['stage:error']
+            });
+
+  # ============================================================
+  # STAGE 6: Analysis Execution
+  # Trigger: issue labeled "stage:6-analyze"
+  # Output: marimo notebook (analyses/), HTML export
+  # ============================================================
+  stage-6-analyze:
+    if: github.event.label.name == 'stage:6-analyze'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install uv && uv sync
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Run Stage 6 — Execute analysis
+        id: stage6
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.CLAUDE_TOKEN }}
+          prompt_file: .claude/prompts/stage-6-analyze.md
+          issue_number: ${{ github.event.issue.number }}
+        env:
+          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ env.GOOGLE_APPLICATION_CREDENTIALS }}
+          BQ_DATASET_ANALYTICS: ${{ vars.BQ_DATASET_ANALYTICS || 'analytics' }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+
+      - name: Upload analysis artifacts
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: analysis-notebooks-${{ github.event.issue.number }}
+          path: analyses/
+          if-no-files-found: warn
+
+      - name: Transition to Stage 7 on success
+        if: success()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issue = context.issue.number;
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issue,
+              body: `<!-- stage:6-complete -->\n✅ **Stage 6 완료**: 분석 실행 완료. marimo 노트북이 생성되었습니다.\n\n다음 단계: stage:7-report`
+            });
+            try {
+              await github.rest.issues.removeLabel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue,
+                name: 'stage:6-analyze'
+              });
+            } catch (e) {}
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issue,
+              labels: ['stage:7-report']
+            });
+
+      - name: Handle Stage 6 failure
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issue = context.issue.number;
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issue,
+              body: `<!-- error-category: AGENT -->\n❌ **Stage 6 실패**: 분석 실행 중 오류가 발생했습니다.\n\n**가능한 원인**: 잘못된 SQL, marimo 실행 오류\n**복구 방법**: \`stage:error\` 레이블을 제거하고 \`stage:6-analyze\` 레이블을 다시 추가하세요.`
+            });
+            try {
+              await github.rest.issues.removeLabel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue,
+                name: 'stage:6-analyze'
+              });
+            } catch (e) {}
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issue,
+              labels: ['stage:error']
+            });
+
+  # ============================================================
+  # STAGE 7: Report Generation & PR Creation
+  # Trigger: issue labeled "stage:7-report"
+  # Output: PR with analysis report, evidence/ file links, artifact links
+  # ============================================================
+  stage-7-report:
+    if: github.event.label.name == 'stage:7-report'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install uv && uv sync
+
+      - name: Run Stage 7 — Generate report and create PR
+        id: stage7
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.CLAUDE_TOKEN }}
+          prompt_file: .claude/prompts/stage-7-report.md
+          issue_number: ${{ github.event.issue.number }}
+        env:
+          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+
+      - name: Upload report artifacts
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: analysis-report-${{ github.event.issue.number }}
+          path: |
+            evidence/
+            analyses/*.html
+          if-no-files-found: warn
+
+      - name: Mark pipeline complete on success
+        if: success()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issue = context.issue.number;
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issue,
+              body: `<!-- stage:7-complete -->\n✅ **Stage 7 완료**: 리포트 생성 및 PR 생성 완료!\n\n🎉 **전체 파이프라인 완료** — 분석 결과가 PR에 포함되어 있습니다.\n\n**증거 파일**: evidence/ 디렉토리를 확인하세요.`
+            });
+            try {
+              await github.rest.issues.removeLabel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue,
+                name: 'stage:7-report'
+              });
+            } catch (e) {}
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issue,
+              labels: ['done']
+            });
+
+      - name: Handle Stage 7 failure
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issue = context.issue.number;
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issue,
+              body: `<!-- error-category: WORKFLOW -->\n❌ **Stage 7 실패**: 리포트 생성 또는 PR 생성 중 오류가 발생했습니다.\n\n**가능한 원인**: GitHub 권한 부족, PR 생성 실패\n**복구 방법**: 워크플로우 권한을 확인한 후 \`stage:error\` 레이블을 제거하고 \`stage:7-report\` 레이블을 다시 추가하세요.`
+            });
+            try {
+              await github.rest.issues.removeLabel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue,
+                name: 'stage:7-report'
+              });
+            } catch (e) {}
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issue,
+              labels: ['stage:error']
+            });

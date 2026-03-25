@@ -1,0 +1,83 @@
+# seeds/schema.yml — dbt seed documentation
+# Small sample dataset for local testing and dbt model validation.
+# Learners use these seeds to validate their dbt project setup before
+# generating full-scale data with scripts/generate_synthetic_data.py.
+
+version: 2
+
+seeds:
+  - name: raw_users
+    description: >
+      Sample FitTrack user profiles (20 rows).
+      Use 'dbt seed' to load this into your data warehouse for initial testing.
+    columns:
+      - name: user_id
+        description: "Unique user identifier"
+        tests:
+          - unique
+          - not_null
+      - name: created_at
+        description: "Account creation timestamp (UTC)"
+        tests:
+          - not_null
+      - name: country
+        description: "ISO 3166-1 alpha-2 country code"
+        tests:
+          - not_null
+          - accepted_values:
+              values: ["KR", "US", "JP", "GB", "DE", "FR", "CA", "AU"]
+      - name: platform
+        description: "Device platform"
+        tests:
+          - not_null
+          - accepted_values:
+              values: ["ios", "android"]
+      - name: acquisition_source
+        description: "User acquisition channel"
+        tests:
+          - not_null
+
+  - name: raw_events
+    description: >
+      Sample FitTrack app events (80 rows across Jan-Mar 2026).
+      Covers all event types with multi-day activity for DAU/MAU calculation testing.
+    columns:
+      - name: event_id
+        description: "Unique event identifier"
+        tests:
+          - unique
+          - not_null
+      - name: user_id
+        description: "User identifier (references raw_users.user_id)"
+        tests:
+          - not_null
+      - name: event_type
+        description: "Event type classification"
+        tests:
+          - not_null
+          - accepted_values:
+              values:
+                - app_open
+                - screen_view
+                - workout_start
+                - workout_end
+                - profile_view
+                - settings_change
+                - notification_open
+                - share
+      - name: event_timestamp
+        description: "Event timestamp (UTC)"
+        tests:
+          - not_null
+      - name: platform
+        description: "Device platform"
+        tests:
+          - not_null
+          - accepted_values:
+              values: ["ios", "android"]
+      - name: app_version
+        description: "Application version string"
+        tests:
+          - not_null
+      - name: properties
+        description: "JSON string with additional event properties"

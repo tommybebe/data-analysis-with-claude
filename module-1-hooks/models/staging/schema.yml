@@ -1,0 +1,57 @@
+# schema.yml — Staging model documentation and tests
+# Frozen snapshot from Module 0 output (prerequisite for Module 1)
+
+version: 2
+
+models:
+  - name: stg_events
+    description: "Cleaned and deduplicated app events from FitTrack mobile app"
+    columns:
+      - name: event_id
+        description: "Unique event identifier"
+        tests:
+          - unique
+          - not_null
+      - name: user_id
+        description: "User identifier"
+        tests:
+          - not_null
+      - name: event_type
+        description: "Event type"
+        tests:
+          - not_null
+      - name: event_timestamp
+        description: "Event timestamp in UTC"
+        tests:
+          - not_null
+      - name: event_date
+        description: "Event date derived from timestamp"
+        tests:
+          - not_null
+      - name: platform
+        description: "Device platform (ios, android)"
+        tests:
+          - accepted_values:
+              values: ['ios', 'android']
+
+  - name: stg_users
+    description: "Cleaned user profile data"
+    columns:
+      - name: user_id
+        description: "Unique user identifier"
+        tests:
+          - unique
+          - not_null
+      - name: created_at
+        description: "Account creation timestamp in UTC"
+        tests:
+          - not_null
+      - name: signup_date
+        description: "Signup date derived from created_at"
+        tests:
+          - not_null
+      - name: platform
+        description: "Primary device platform"
+        tests:
+          - accepted_values:
+              values: ['ios', 'android']

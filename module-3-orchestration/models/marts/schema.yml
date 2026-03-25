@@ -1,0 +1,53 @@
+# schema.yml — Mart model documentation and tests
+# Frozen snapshot from Module 0 output (prerequisite for Module 3)
+
+version: 2
+
+models:
+  - name: fct_daily_active_users
+    description: "Daily active user counts by platform"
+    columns:
+      - name: event_date
+        description: "Activity date"
+        tests:
+          - not_null
+      - name: platform
+        description: "Device platform"
+        tests:
+          - not_null
+      - name: dau
+        description: "Number of distinct active users on this date/platform"
+        tests:
+          - not_null
+
+  - name: fct_monthly_active_users
+    description: "Monthly active user counts by platform"
+    columns:
+      - name: activity_month
+        description: "Activity month (first day)"
+        tests:
+          - not_null
+      - name: platform
+        description: "Device platform"
+        tests:
+          - not_null
+      - name: mau
+        description: "Number of distinct active users in this month/platform"
+        tests:
+          - not_null
+
+  - name: fct_retention_cohort
+    description: "Cohort-based retention rates"
+    columns:
+      - name: cohort_month
+        description: "User signup cohort month"
+        tests:
+          - not_null
+      - name: months_since_signup
+        description: "Months elapsed since cohort signup"
+        tests:
+          - not_null
+      - name: retention_rate
+        description: "Percentage of cohort still active"
+        tests:
+          - not_null

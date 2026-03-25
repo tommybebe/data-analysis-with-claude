@@ -1,0 +1,31 @@
+[project]
+name = "fittrack-analysis-module-3"
+version = "0.1.0"
+description = "Module 3: Permissions Orchestration — agent boundary design via permissions.allow/deny and GitHub Actions permissions"
+requires-python = ">=3.11"
+
+dependencies = [
+    # --- Module 0 prerequisites (data infrastructure) ---
+    "dbt-core>=1.7,<2.0",
+    "dbt-bigquery>=1.7,<2.0",
+    "numpy>=1.26",
+    "pandas>=2.1",
+    "pyarrow>=14.0",
+    "google-cloud-bigquery>=3.20",
+    "pandas-gbq>=0.23",
+    # --- Module 2 prerequisites (analysis notebooks) ---
+    "marimo>=0.6",
+]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.4",
+    "pytest>=8.0",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]

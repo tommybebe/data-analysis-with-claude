@@ -1,0 +1,28 @@
+# dbt_project.yml — FitTrack DAU/MAU Analysis
+# Frozen snapshot from Module 0 output (prerequisite for Module 3)
+
+name: 'fittrack_analysis'
+version: '1.0.0'
+
+profile: 'fittrack_analysis'
+
+model-paths: ["models"]
+analysis-paths: ["analyses"]
+test-paths: ["tests"]
+seed-paths: ["seeds"]
+macro-paths: ["macros"]
+snapshot-paths: ["snapshots"]
+asset-paths: ["assets"]
+
+clean-targets:
+  - "target"
+  - "dbt_packages"
+
+models:
+  fittrack_analysis:
+    staging:
+      +materialized: view
+      +schema: "{{ env_var('BQ_DATASET_RAW', 'raw') }}"
+    marts:
+      +materialized: table
+      +schema: "{{ env_var('BQ_DATASET_ANALYTICS', 'analytics') }}"

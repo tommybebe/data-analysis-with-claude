@@ -1,0 +1,43 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Virtual environment
+.venv/
+venv/
+
+# dbt
+target/
+dbt_packages/
+logs/
+
+# Environment and secrets
+.env
+profiles.yml
+*.json
+!dbt_project.yml
+!packages.yml
+!models/**/*.yml
+!evidence/*.json
+
+# Service account keys
+*-service-account-*.json
+*-sa-key*.json
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Data files (generated, not committed)
+data/

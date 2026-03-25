@@ -1,0 +1,19 @@
+# profiles.yml.example — dbt connection config template
+# Copy to profiles.yml and fill in actual values:
+#   cp profiles.yml.example profiles.yml
+# profiles.yml is in .gitignore and never committed.
+
+fittrack_analysis:
+  target: dev
+  outputs:
+    dev:
+      type: bigquery
+      method: service-account
+      project: "{{ env_var('GCP_PROJECT_ID') }}"
+      dataset: "{{ env_var('BQ_DATASET_ANALYTICS', 'analytics') }}"
+      location: "{{ env_var('DATASET_LOCATION', 'US') }}"
+      keyfile: "{{ env_var('GOOGLE_APPLICATION_CREDENTIALS') }}"
+      threads: 4
+      timeout_seconds: 300
+      priority: interactive
+      retries: 1

@@ -1,0 +1,45 @@
+# sources.yml — BigQuery source declarations
+# Frozen snapshot from Module 0 output (prerequisite for Module 1)
+
+version: 2
+
+sources:
+  - name: raw
+    database: "{{ env_var('GCP_PROJECT_ID') }}"
+    schema: "{{ env_var('BQ_DATASET_RAW', 'raw') }}"
+    tables:
+      - name: raw_events
+        description: "Raw app event data from FitTrack mobile app"
+        columns:
+          - name: event_id
+            description: "Unique event identifier (UUID)"
+          - name: user_id
+            description: "User identifier"
+          - name: event_type
+            description: "Event type (app_open, workout_start, workout_end, screen_view, etc.)"
+          - name: event_timestamp
+            description: "Event timestamp in UTC"
+          - name: platform
+            description: "Device platform (ios, android)"
+          - name: app_version
+            description: "Application version string"
+          - name: properties
+            description: "JSON string with additional event properties"
+        loaded_at_field: event_timestamp
+        freshness:
+          warn_after: {count: 24, period: hour}
+          error_after: {count: 48, period: hour}
+
+      - name: raw_users
+        description: "Raw user profile data"
+        columns:
+          - name: user_id
+            description: "Unique user identifier"
+          - name: created_at
+            description: "Account creation timestamp in UTC"
+          - name: country
+            description: "User country code (ISO 3166-1 alpha-2)"
+          - name: platform
+            description: "Primary device platform (ios, android)"
+          - name: acquisition_source
+            description: "User acquisition channel"
