@@ -1,0 +1,77 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(dbt run:*)",
+      "Bash(dbt test:*)",
+      "Bash(dbt compile:*)",
+      "Bash(dbt debug:*)",
+      "Bash(dbt deps:*)",
+      "Bash(dbt ls:*)",
+      "Bash(dbt source freshness:*)",
+      "Bash(bq query --dry_run:*)",
+      "Bash(git status:*)",
+      "Bash(git log:*)",
+      "Bash(git diff:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git checkout:*)",
+      "Bash(git push:*)",
+      "Bash(gh issue:*)",
+      "Bash(gh pr:*)",
+      "Bash(python3:*)",
+      "Bash(jq:*)",
+      "Read",
+      "Write",
+      "Edit"
+    ],
+    "deny": [
+      "Bash(git push --force:*)",
+      "Bash(bq rm:*)",
+      "Bash(dbt run --full-refresh:*)",
+      "Bash(rm -rf:*)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/bq-cost-guard.sh"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/dbt-auto-test.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/dbt-auto-test.sh"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/stop-summary.sh"
+          }
+        ]
+      }
+    ]
+  }
+}
