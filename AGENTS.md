@@ -16,7 +16,8 @@ The course repository is organized as follows:
 repo-root/
 ├── README.md                    ← Course overview and navigation (Korean)
 ├── AGENTS.md                    ← This file
-├── course-spec.md               ← Full course specification
+├── course-spec.md               ← Course specification (objectives, concepts, self-checks)
+├── build-guide.md               ← Build walkthrough & reference implementation (modules 1–4)
 ├── env-vars-manifest.md         ← Complete environment variables manifest
 ├── instructor-setup-guide.md    ← Instructor / self-learner setup guide
 ├── references/                  ← Reference documents (BigQuery, cost, data, learning cycle)
@@ -41,8 +42,12 @@ Learners can start at any module independently.
 
 ## Editing Rules
 
-- `course-spec.md` is the authoritative course specification. Keep it in sync with any
-  changes to module content.
+- `course-spec.md` is the course specification — learning objectives, key concepts, and
+  self-check criteria (WHAT/WHY). Do not embed build steps or full source in it; link to
+  `build-guide.md` and the module directories instead.
+- `build-guide.md` holds the build walkthrough and annotated reference implementation for
+  modules 1–4 (HOW). The runnable source of truth is the files under each `module-N-*/`
+  directory; keep `build-guide.md` consistent with those, not the other way around.
 - `references/` documents are shared reference material duplicated into relevant modules.
 - `env-vars-manifest.md` is the authoritative environment variables reference for the entire course.
 - `research/` contains harness engineering research notes for course design reference.

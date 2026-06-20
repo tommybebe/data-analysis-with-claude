@@ -88,7 +88,8 @@ claude .
 data-analysis-with-claude/
 ├── README.md                          ← 코스 랜딩 페이지 및 모듈 네비게이션 (이 파일)
 ├── AGENTS.md                          ← 레포 운영/편집 지침
-├── course-spec.md                     ← 코스 전체 명세
+├── course-spec.md                     ← 코스 명세 (학습 목표·핵심 개념·자기 점검)
+├── build-guide.md                     ← 빌드 가이드 및 참조 구현 (모듈 1~4)
 ├── env-vars-manifest.md               ← 전체 환경 변수 매니페스트
 ├── instructor-setup-guide.md          ← 강사/자기학습자 환경 설정 가이드
 ├── references/                        ← 공용 참고 자료 (BigQuery, 비용 관리 등)
@@ -106,7 +107,8 @@ data-analysis-with-claude/
 
 ## 참고 자료
 
-- [코스 전체 명세](course-spec.md)
+- [코스 명세](course-spec.md)
+- [빌드 가이드 (모듈 1~4 참조 구현)](build-guide.md)
 - [환경 변수 매니페스트](env-vars-manifest.md)
 - [강사 설정 가이드](instructor-setup-guide.md)
 - [GCP/BigQuery 환경 설정](references/gcp-bigquery-setup.md)
