@@ -12,9 +12,13 @@ Baseline for all diffs: pre-split `course-spec.md` at `origin/main` (commit `e31
 ## 1. Content preservation (pre-split `course-spec.md` → `course-spec.md` + `build-guide.md`)
 
 Line count: pre-split `course-spec.md` = 3171 lines; post-split `course-spec.md` (1288) +
-`build-guide.md` (1571) = 2859 lines → **net −312**, consistent with the PR's claimed ~300-line
-reduction (one duplicated ~250-line learning-cycle section condensed to a pointer, plus dead
-code/link removal).
+`build-guide.md` (1414) = 2702 lines → **net −469**. Two effects combine: (a) the split's own
+intended ~300-line reduction (one duplicated ~250-line learning-cycle section condensed to a
+pointer, plus dead code/link removal); and (b) a further ~157-line trim from the reconciliation
+commit, which replaced `build-guide.md`'s verbose, drifted old-spec reference specs with the
+**leaner real files** (e.g. the 4 slash-command bodies). No substantive content was lost — the
+extra trim is purely the elaborated-but-inaccurate specs collapsing onto the shorter source-of-truth
+files (verified block-by-block in §2).
 
 ### What moved where
 

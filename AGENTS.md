@@ -55,6 +55,9 @@ Learners can start at any module independently.
   per-module `# Frozen snapshot from Module N output …` provenance line. The empty
   `settings.json` skeleton, the incremental hook snippets, `/hello`, and the `permissions`
   excerpts are clearly-labeled teaching examples with no 1:1 source file.
+  **Anti-drift gate:** run `scripts/check-build-guide-faithfulness.sh` (exit 0 = faithful,
+  nonzero = drift) after editing any module file or `build-guide.md`; the rationale and the
+  accepted re-drift risk are recorded in `docs/adr/0001-build-guide-mirrors-module-dirs.md`.
 - `references/` documents are shared reference material duplicated into relevant modules.
 - `env-vars-manifest.md` is the authoritative environment variables reference for the entire course.
 - `research/` contains harness engineering research notes for course design reference.
