@@ -48,6 +48,13 @@ Learners can start at any module independently.
 - `build-guide.md` holds the build walkthrough and annotated reference implementation for
   modules 1–4 (HOW). The runnable source of truth is the files under each `module-N-*/`
   directory; keep `build-guide.md` consistent with those, not the other way around.
+  Its `cat > … << 'EOF'`/`'HOOKEOF'` reference blocks reproduce the module-dir files
+  **verbatim** — logic and comment language included (hook scripts: English comments +
+  Korean user messages; command files: English `## Input/Execution Steps/Output/Constraints`
+  headers + Korean content; stage prompts: Korean headers) — omitting only each copy's
+  per-module `# Frozen snapshot from Module N output …` provenance line. The empty
+  `settings.json` skeleton, the incremental hook snippets, `/hello`, and the `permissions`
+  excerpts are clearly-labeled teaching examples with no 1:1 source file.
 - `references/` documents are shared reference material duplicated into relevant modules.
 - `env-vars-manifest.md` is the authoritative environment variables reference for the entire course.
 - `research/` contains harness engineering research notes for course design reference.

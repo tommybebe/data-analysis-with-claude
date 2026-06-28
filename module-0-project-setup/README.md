@@ -647,6 +647,29 @@ uv run dbt test
 
 ---
 
+### 단계 8: Claude Code 레포 이해도 기준선 측정
+
+> 🔧 **이 단계의 위치**: 이것은 **하니스 효과 측정**을 위한 기준선 기록입니다. 모듈 0에는 아직 하니스(`AGENTS.md`, 훅, 슬래시 커맨드)가 없으므로, 지금 에이전트의 응답이 "하니스 없는 기준선"이 됩니다. 모듈 1에서 `AGENTS.md`를 추가한 뒤 같은 질문을 하면 하니스 효과를 직접 체감할 수 있습니다.
+
+모듈 1 전후의 응답 품질을 비교하기 위해, 현재 응답을 `evidence/module-0-baseline.md`에 기록합니다:
+
+```bash
+mkdir -p evidence
+
+# AGENTS.md 없는 상태에서의 응답 품질 측정
+claude -p "이 dbt 프로젝트의 데이터 흐름을 설명해줘.
+sources.yml의 소스 테이블에서 시작하여 staging 모델을 거쳐
+mart 모델(fct_daily_active_users, fct_monthly_active_users)까지의
+변환 과정을 단계별로 정리해줘. 각 모델의 그레인과 주요 컬럼도 포함해줘." \
+  --output-format text | tee evidence/module-0-baseline.md
+```
+
+> **관찰 포인트**: 현 시점에는 하니스(`AGENTS.md`, `.claude/settings.json`, `.claude/commands/`)가 없으므로 에이전트가 파일 내용만으로 추측하여 답변합니다. 모듈 1에서 훅과 `settings.json`을, 모듈 2에서 슬래시 커맨드를 추가한 후 동일한 질문을 다시 던져 하니스 효과를 비교하세요.
+
+**성공 기준**: `evidence/module-0-baseline.md`에 에이전트의 데이터 흐름 설명이 기록됨
+
+---
+
 ## 핵심 개념 소개
 
 이 섹션은 코스 전체에서 반복 등장하는 핵심 개념입니다. 모듈 1~4를 진행하며 이 개념들이 구체적인 코드와 연결됩니다.

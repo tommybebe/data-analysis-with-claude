@@ -13,7 +13,7 @@
 | `module-N-*/README.md` | 학습자용 단계별 활동 가이드 |
 | `module-N-*/.claude/`, `models/`, `.github/` | **실제 동작하는 산출 파일 (source of truth)** |
 
-> ⚠️ **단일 출처 원칙**: 이 문서의 코드는 **학습용 주석(한국어)** 이 달린 참조 구현입니다. 실제로 실행되는 정본 파일은 각 모듈 디렉터리(`module-N-*/.claude/hooks/`, `.claude/commands/`, `.github/workflows/` 등)에 있습니다. 동작 검증·수정은 모듈 디렉터리의 파일을 기준으로 하세요.
+> ⚠️ **단일 출처 원칙**: 이 문서의 코드 블록은 각 모듈 디렉터리의 **정본 파일을 그대로 옮긴 참조 사본**입니다. 로직과 주석 언어가 실제 파일과 일치하며(구조 주석은 영문, 사용자 출력 메시지·본문은 한국어 — 정본 파일의 스타일 그대로), 모듈별 `# Frozen snapshot from Module N output …` 출처 표기 줄만 생략했습니다. 실제로 실행되는 정본 파일은 각 모듈 디렉터리(`module-N-*/.claude/hooks/`, `.claude/commands/`, `.claude/settings.json`, `.github/workflows/`, `.claude/prompts/` 등)에 있으며, 동작 검증·수정은 항상 모듈 디렉터리의 파일을 기준으로 하세요. `/hello` 커맨드, `settings.json` 점진적 스니펫, permissions 발췌처럼 정본 파일이 없거나 일부만 보여 주는 교육용 예시는 그 취지를 본문에 명시했습니다.
 
 ---
 
@@ -126,89 +126,57 @@ claude "현재 날짜를 알려줘"
 ```bash
 cat > .claude/hooks/bq-cost-guard.sh << 'HOOKEOF'
 #!/usr/bin/env bash
-# bq-cost-guard.sh — BigQuery 쿼리 비용 가드
-# 훅 타입: PreToolUse
-# 매처: Bash (bq query 명령 감지)
-# 역할: bq query 실행 전 dry-run으로 예상 스캔 바이트 확인 → 한도 초과 시 차단
+# bq-cost-guard.sh — BigQuery query cost guard
+# Hook type: PreToolUse | Matcher: Bash
+# Role: Block queries exceeding scan byte threshold via dry-run estimation
 
 set -euo pipefail
 
-# 비용 한도 (기본값: 1GB, 환경변수로 조정 가능)
+# Read hook input from STDIN
+INPUT=$(cat)
+
+# Extract the command from tool_input
+COMMAND=$(echo "$INPUT" | python3 -c "import sys, json; data = json.load(sys.stdin); print(data.get('tool_input', {}).get('command', ''))" 2>/dev/null || echo "")
+
+# Only check bq query commands
+if [[ "$COMMAND" != *"bq query"* ]]; then
+    exit 0
+fi
+
+# Skip if already a dry-run
+if [[ "$COMMAND" == *"--dry_run"* ]]; then
+    exit 0
+fi
+
+# Cost threshold from environment variable (default: 1GB)
 COST_LIMIT_BYTES="${BQ_COST_LIMIT_BYTES:-1073741824}"
 
-# PreToolUse 훅 입력: STDIN으로 JSON 전달
-# 형식: {"tool_name": "Bash", "tool_input": {"command": "..."}}
-HOOK_INPUT=$(cat)
-TOOL_INPUT=$(echo "$HOOK_INPUT" | python3 -c "
-import json, sys
-data = json.load(sys.stdin)
-# tool_input.command 키 확인
-cmd = data.get('tool_input', {}).get('command', '') or data.get('command', '')
-print(cmd)
-" 2>/dev/null || echo "")
-
-# bq query 명령이 아니면 통과 (다른 Bash 명령은 허용)
-if [[ "$TOOL_INPUT" != *"bq query"* ]]; then
-    exit 0
+# Extract the SQL query from the command
+SQL=$(echo "$COMMAND" | sed -n 's/.*bq query[^"]*"\(.*\)".*/\1/p')
+if [[ -z "$SQL" ]]; then
+    echo "⚠️ [bq-cost-guard] bq query 명령에서 SQL을 추출할 수 없습니다" >&2
+    exit 1
 fi
 
-# --dry_run 플래그가 이미 포함된 경우 통과 (dry-run 자체는 허용)
-if [[ "$TOOL_INPUT" == *"--dry_run"* ]]; then
-    exit 0
-fi
-
-# 쿼리 추출
-QUERY=$(echo "$TOOL_INPUT" | sed "s/.*bq query[^'\"]*['\"]//;s/['\"].*//")
-
-if [[ -z "$QUERY" ]]; then
-    echo "⚠️  [bq-cost-guard] 쿼리 파싱 불가 — 수동으로 비용 확인하세요." >&2
-    exit 0
-fi
-
-# dry-run으로 예상 스캔 바이트 확인
-echo "🔍 [bq-cost-guard] dry-run 실행 중..." >&2
-DRY_RUN_OUTPUT=$(bq query --dry_run --use_legacy_sql=false "$QUERY" 2>&1) || {
+# Run dry-run to estimate scan bytes
+DRY_RUN_OUTPUT=$(bq query --dry_run --use_legacy_sql=false "$SQL" 2>&1) || {
     echo "❌ [bq-cost-guard] dry-run 실패: $DRY_RUN_OUTPUT" >&2
     exit 1
 }
 
-# 스캔 바이트 추출
-BYTES=$(echo "$DRY_RUN_OUTPUT" | python3 -c "
-import json, sys, re
-output = sys.stdin.read()
-try:
-    data = json.loads(output)
-    print(data.get('statistics', {}).get('totalBytesProcessed', '0'))
-except:
-    match = re.search(r'totalBytesProcessed[\":\s]+([0-9]+)', output)
-    print(match.group(1) if match else '0')
-" 2>/dev/null || echo "0")
+# Extract bytes from dry-run output
+SCAN_BYTES=$(echo "$DRY_RUN_OUTPUT" | grep -oP '\d+' | head -1 || echo "0")
 
-BYTES=${BYTES:-0}
-
-# 사람이 읽기 쉬운 크기 표현
-if [[ "$BYTES" -gt 1073741824 ]]; then
-    HUMAN_SIZE="$(python3 -c "print(f'{$BYTES/1073741824:.2f} GB')")"
-elif [[ "$BYTES" -gt 1048576 ]]; then
-    HUMAN_SIZE="$(python3 -c "print(f'{$BYTES/1048576:.2f} MB')")"
-else
-    HUMAN_SIZE="$(python3 -c "print(f'{$BYTES/1024:.2f} KB')")"
+if [[ "$SCAN_BYTES" -gt "$COST_LIMIT_BYTES" ]]; then
+    SCAN_MB=$((SCAN_BYTES / 1048576))
+    LIMIT_MB=$((COST_LIMIT_BYTES / 1048576))
+    echo "❌ [bq-cost-guard] 쿼리 스캔 예상: ${SCAN_MB}MB — 한도 초과 (${LIMIT_MB}MB)" >&2
+    echo "   비용 추정: \$$(echo "scale=4; $SCAN_BYTES / 1099511627776 * 5" | bc)  (on-demand \$5/TB)" >&2
+    exit 1
 fi
 
-# 예상 비용 ($5/TB 기준)
-COST_USD=$(python3 -c "print(f'\${$BYTES/1099511627776*5:.4f}')" 2>/dev/null || echo "\$0.0000")
-
-echo "📊 [bq-cost-guard] 예상 스캔: $HUMAN_SIZE | 예상 비용: $COST_USD" >&2
-
-# 한도 초과 시 차단 (exit 1)
-if [[ "$BYTES" -gt "$COST_LIMIT_BYTES" ]]; then
-    LIMIT_HUMAN="$(python3 -c "print(f'{$COST_LIMIT_BYTES/1073741824:.2f} GB')")"
-    echo "❌ [bq-cost-guard] 비용 한도 초과! (한도: $LIMIT_HUMAN, 예상: $HUMAN_SIZE)" >&2
-    echo "   최적화: WHERE 절 날짜 파티션 필터, mart 모델(fct_*) 활용" >&2
-    exit 1  # Claude Code가 bq query 실행을 취소함
-fi
-
-echo "✅ [bq-cost-guard] 비용 한도 이내 — 쿼리 실행 허용" >&2
+SCAN_MB=$((SCAN_BYTES / 1048576))
+echo "✅ [bq-cost-guard] 쿼리 스캔 예상: ${SCAN_MB}MB — 한도 이내" >&2
 exit 0
 HOOKEOF
 chmod +x .claude/hooks/bq-cost-guard.sh
@@ -249,7 +217,8 @@ export BQ_COST_LIMIT_BYTES=1
 echo '{"tool_name":"Bash","tool_input":{"command":"bq query --use_legacy_sql=false \"SELECT 1\""}}' \
   | bash .claude/hooks/bq-cost-guard.sh
 
-# 기대 출력: "❌ [bq-cost-guard] 비용 한도 초과!" 메시지와 exit 1
+# 기대 출력: BigQuery 연결 시 "❌ [bq-cost-guard] 쿼리 스캔 예상: NMB — 한도 초과 (0MB)",
+#           연결이 없으면 "❌ [bq-cost-guard] dry-run 실패: ..." — 두 경우 모두 exit 1
 echo "훅 종료 코드: $?"  # 1이어야 함
 
 # 테스트 후 원래 값 복원
@@ -265,40 +234,33 @@ dbt SQL 파일이 편집될 때마다 자동으로 `dbt compile`을 실행하여
 ```bash
 cat > .claude/hooks/dbt-auto-test.sh << 'HOOKEOF'
 #!/usr/bin/env bash
-# dbt-auto-test.sh — dbt 모델 편집 후 자동 컴파일 검증
-# 훅 타입: PostToolUse
-# 매처: Write / Edit (models/**/*.sql 파일)
-# 역할: dbt SQL 파일 수정 시 즉각 문법 오류 피드백 제공
+# dbt-auto-test.sh — Auto-compile dbt models after SQL file changes
+# Hook type: PostToolUse | Matcher: Write, Edit
+# Role: Automatically verify dbt model syntax after SQL file modifications
 
-set -uo pipefail
+set -euo pipefail
 
-# PostToolUse 입력에서 수정된 파일 경로 추출
-HOOK_INPUT=$(cat)
-FILE_PATH=$(echo "$HOOK_INPUT" | python3 -c "
-import json, sys
-data = json.load(sys.stdin)
-# tool_input.file_path 또는 path 키
-path = data.get('tool_input', {}).get('file_path', '') or \
-       data.get('tool_input', {}).get('path', '')
-print(path)
-" 2>/dev/null || echo "")
+# Read hook input from STDIN
+INPUT=$(cat)
 
-# dbt 모델 파일이 아니면 통과
-if [[ "$FILE_PATH" != *"models/"*".sql" ]]; then
+# Extract the file path from tool_input
+FILE_PATH=$(echo "$INPUT" | python3 -c "import sys, json; data = json.load(sys.stdin); print(data.get('tool_input', {}).get('file_path', ''))" 2>/dev/null || echo "")
+
+# Only check SQL files in models/ directory
+if [[ "$FILE_PATH" != models/*.sql && "$FILE_PATH" != models/**/*.sql ]]; then
     exit 0
 fi
 
-echo "🔧 [dbt-auto-test] dbt 모델 변경 감지: $FILE_PATH" >&2
-echo "   dbt compile 실행 중..." >&2
+# Run dbt compile to verify syntax
+echo "🔄 [dbt-auto-test] dbt compile 실행 중..." >&2
+COMPILE_OUTPUT=$(uv run dbt compile 2>&1) || {
+    echo "❌ [dbt-auto-test] dbt compile 실패:" >&2
+    echo "$COMPILE_OUTPUT" >&2
+    exit 1
+}
 
-# dbt compile로 SQL 문법 검증 (빌드 없이 SQL 생성만 시도)
-if dbt compile 2>&1 | tail -5 >&2; then
-    echo "✅ [dbt-auto-test] dbt compile 성공 — SQL 문법 정상" >&2
-    exit 0
-else
-    echo "❌ [dbt-auto-test] dbt compile 실패 — SQL 문법 오류 확인 필요" >&2
-    exit 1  # Claude Code가 오류를 확인하도록 알림
-fi
+echo "✅ [dbt-auto-test] dbt compile 성공" >&2
+exit 0
 HOOKEOF
 chmod +x .claude/hooks/dbt-auto-test.sh
 ```
@@ -358,25 +320,20 @@ cat > .claude/settings.json << 'EOF'
       "Bash(dbt run:*)",
       "Bash(dbt test:*)",
       "Bash(dbt compile:*)",
-      "Bash(dbt source freshness:*)",
-      "Bash(dbt ls:*)",
-      "Bash(dbt deps:*)",
       "Bash(dbt debug:*)",
+      "Bash(dbt deps:*)",
+      "Bash(dbt ls:*)",
+      "Bash(dbt source freshness:*)",
       "Bash(bq query --dry_run:*)",
-      "Bash(bq show:*)",
-      "Bash(bq ls:*)",
-      "Bash(uv run:*)",
-      "Bash(git diff:*)",
       "Bash(git status:*)",
       "Bash(git log:*)",
+      "Bash(git diff:*)",
       "Bash(git add:*)",
       "Bash(git commit:*)",
-      "Bash(git checkout -b:*)",
+      "Bash(git checkout:*)",
       "Bash(git push:*)",
-      "Bash(gh issue view:*)",
-      "Bash(gh issue list:*)",
-      "Bash(gh pr create:*)",
-      "Bash(gh pr list:*)",
+      "Bash(gh issue:*)",
+      "Bash(gh pr:*)",
       "Bash(python3:*)",
       "Bash(jq:*)",
       "Read",
@@ -385,10 +342,7 @@ cat > .claude/settings.json << 'EOF'
     ],
     "deny": [
       "Bash(git push --force:*)",
-      "Bash(git push origin main:*)",
-      "Bash(git push origin master:*)",
       "Bash(bq rm:*)",
-      "Bash(bq mk --force:*)",
       "Bash(dbt run --full-refresh:*)",
       "Bash(rm -rf:*)"
     ]
@@ -398,7 +352,10 @@ cat > .claude/settings.json << 'EOF'
       {
         "matcher": "Bash",
         "hooks": [
-          { "type": "command", "command": "bash .claude/hooks/bq-cost-guard.sh" }
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/bq-cost-guard.sh"
+          }
         ]
       }
     ],
@@ -406,20 +363,29 @@ cat > .claude/settings.json << 'EOF'
       {
         "matcher": "Write",
         "hooks": [
-          { "type": "command", "command": "bash .claude/hooks/dbt-auto-test.sh" }
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/dbt-auto-test.sh"
+          }
         ]
       },
       {
         "matcher": "Edit",
         "hooks": [
-          { "type": "command", "command": "bash .claude/hooks/dbt-auto-test.sh" }
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/dbt-auto-test.sh"
+          }
         ]
       }
     ],
     "Stop": [
       {
         "hooks": [
-          { "type": "command", "command": "bash .claude/hooks/stop-summary.sh" }
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/stop-summary.sh"
+          }
         ]
       }
     ]
@@ -450,52 +416,45 @@ Stop 훅을 업그레이드하여 분석 세션의 작업 요약을 `evidence/` 
 ```bash
 cat > .claude/hooks/stop-summary.sh << 'HOOKEOF'
 #!/usr/bin/env bash
-# stop-summary.sh — 세션 종료 시 작업 요약 생성
-# 훅 타입: Stop
-# 역할: 에이전트 세션의 가시성 확보 — 무엇이 변경되었는지 자동 기록
+# stop-summary.sh — Session end summary generation
+# Hook type: Stop
+# Role: Improve observability — log session activity to evidence/session_log.json
 
-set -uo pipefail
+set -euo pipefail
 
-# 증거 디렉토리 생성 (없으면)
 mkdir -p evidence
 
-# 현재 시각과 Git 변경 사항 수집
-TIMESTAMP=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
-GIT_CHANGES=$(git diff --name-only HEAD 2>/dev/null | head -20 || echo "")
-STAGED_CHANGES=$(git diff --cached --name-only 2>/dev/null | head -20 || echo "")
+# Collect session metadata
+TIMESTAMP=$(date '+%Y-%m-%dT%H:%M:%S%z')
+MODIFIED_FILES=$(git diff --name-only HEAD 2>/dev/null | head -20 || echo "")
+STAGED_FILES=$(git diff --cached --name-only 2>/dev/null | head -20 || echo "")
 
-# JSON 형식으로 세션 요약 저장
-python3 - << PYEOF
-import json, os
-from datetime import datetime
+# Count changes
+MODIFIED_COUNT=$(echo "$MODIFIED_FILES" | grep -c '.' 2>/dev/null || echo "0")
+STAGED_COUNT=$(echo "$STAGED_FILES" | grep -c '.' 2>/dev/null || echo "0")
 
-# 기존 로그 로드 (있으면)
-log_file = "evidence/session_log.json"
-sessions = []
-if os.path.exists(log_file):
-    try:
-        with open(log_file) as f:
-            sessions = json.load(f)
-    except:
-        sessions = []
+# Generate JSON log
+python3 -c "
+import json, sys
 
-# 새 세션 항목 추가
-session = {
-    "timestamp": "${TIMESTAMP}",
-    "git_changes": """${GIT_CHANGES}""".strip().split('\n') if """${GIT_CHANGES}""".strip() else [],
-    "staged_changes": """${STAGED_CHANGES}""".strip().split('\n') if """${STAGED_CHANGES}""".strip() else []
+log = {
+    'session_end': '$TIMESTAMP',
+    'modified_files_count': int('$MODIFIED_COUNT'),
+    'staged_files_count': int('$STAGED_COUNT'),
+    'modified_files': [f for f in '''$MODIFIED_FILES'''.strip().split('\n') if f],
+    'staged_files': [f for f in '''$STAGED_FILES'''.strip().split('\n') if f],
 }
-sessions.append(session)
 
-# 최근 50개 세션만 유지
-sessions = sessions[-50:]
+with open('evidence/session_log.json', 'w') as f:
+    json.dump(log, f, indent=2, ensure_ascii=False)
 
-with open(log_file, 'w') as f:
-    json.dump(sessions, f, indent=2, ensure_ascii=False)
+print(json.dumps(log, indent=2, ensure_ascii=False), file=sys.stderr)
+"
 
-print(f"✅ [stop-summary] 세션 요약 저장: {log_file} ({len(sessions)}개 항목)")
-PYEOF
-
+echo "=== 세션 완료 요약 ===" >&2
+echo "종료 시각: $TIMESTAMP" >&2
+echo "수정 파일: ${MODIFIED_COUNT}개, 스테이지 파일: ${STAGED_COUNT}개" >&2
+echo "상세 로그: evidence/session_log.json" >&2
 exit 0
 HOOKEOF
 chmod +x .claude/hooks/stop-summary.sh
@@ -638,29 +597,22 @@ mkdir -p .claude/commands
 cat > .claude/commands/hello.md << 'EOF'
 # /hello — 커맨드 구조 연습
 
-이 커맨드는 커맨드 파일 구조를 이해하기 위한 예제입니다.
+이 커맨드는 커맨드 파일 구조를 이해하기 위한 예제입니다. (정본 파일이 아닌 교육용 예시 — 실제 커맨드와 동일한 섹션 구조를 따릅니다)
 
-## 입력
-
+## Input
 - `$ARGUMENTS`: 인사 대상 이름 (예: `/hello FitTrack팀`)
 
-## 실행 단계
+## Execution Steps
+1. 현재 시각과 `$ARGUMENTS`에 입력된 이름을 포함한 인사말을 출력
+2. `AGENTS.md`를 읽고 프로젝트명과 주요 구성 요소(BigQuery, dbt, marimo)를 한 줄로 요약
 
-### 1단계: 인사말 출력
-현재 시각과 `$ARGUMENTS`에 입력된 이름을 포함한 인사말을 출력합니다.
-
-### 2단계: 프로젝트 상태 요약
-`AGENTS.md`를 읽고 프로젝트명과 주요 구성 요소(BigQuery, dbt, marimo)를 한 줄로 요약합니다.
-
-## 출력
-
+## Output
 ```
 안녕하세요, [이름]! [현재 시각]
 프로젝트: FitTrack 데이터 분석 — BigQuery + dbt + marimo 기반
 ```
 
-## 제약 조건
-
+## Constraints
 - 외부 API 호출 금지
 - 파일 생성/수정 없이 읽기 작업만 수행
 EOF
@@ -677,104 +629,32 @@ claude "/hello 데이터팀"
 
 ```bash
 cat > .claude/commands/analyze.md << 'EOF'
-# /analyze — 분석 요청 → end-to-end 데이터 분석 실행
+# /analyze — 분석 요청 파싱부터 marimo 노트북 생성까지
 
-GitHub Issue 또는 분석 요청 텍스트를 받아 dbt 모델 확인 → 쿼리 설계 →
-marimo 노트북 생성 → 완료 증거 저장까지 전 과정을 수행합니다.
+분석 요청을 파싱하여 dbt 모델을 탐색하고, 비용을 확인한 후, marimo 노트북을 생성합니다.
 
-## 입력
+## Input
+- `$ARGUMENTS`: 분석 요청 텍스트 (예: "2026년 1월 DAU", "1분기 플랫폼별 MAU 추이")
 
-- `$ARGUMENTS`: 다음 중 하나
-  - GitHub Issue 번호: `#42` 형식
-  - 분석 요청 텍스트: `"[지표] [기간] [세그먼트(선택)]"` 형식
-    - 예: `"2026년 1월 DAU 추이 기간: 2026-01-01~2026-01-31 세그먼트: platform"`
+## Execution Steps
+1. `$ARGUMENTS`에서 분석 대상 기간, 지표, 세분화 기준을 파싱
+2. 사용 가능한 dbt 모델 탐색: `dbt ls --resource-type model`
+3. 분석에 필요한 mart 모델 식별 (fct_daily_active_users, fct_monthly_active_users, fct_retention_cohort)
+4. BigQuery dry-run으로 비용 사전 확인: `bq query --dry_run --use_legacy_sql=false "SELECT ..."`
+5. 비용이 BQ_COST_LIMIT_BYTES 이내인 경우에만 진행
+6. marimo 노트북 생성: `analyses/analysis_[metric]_[YYYYMM].py`
+7. 노트북에 BigQuery 쿼리, 시각화, 인사이트 요약 포함
+8. evidence/analysis_manifest.json에 분석 메타데이터 기록
 
-## 실행 단계
+## Output
+- `analyses/analysis_[metric]_[YYYYMM].py` — marimo 노트북 파일
+- `evidence/analysis_manifest.json` — 분석 실행 메타데이터
 
-### 1단계: 분석 요청 파싱
-- GitHub Issue 번호인 경우: `gh issue view $ISSUE_NUMBER` 실행하여 본문 확인
-- 텍스트인 경우: 직접 파싱
-- 추출 항목: 지표, 기간(시작일~종료일), 세그먼트, 기대 산출물
-
-### 2단계: 기존 dbt 모델 탐색
-`models/` 디렉토리에서 사용 가능한 mart 모델 확인:
-- `fct_daily_active_users` — DAU 일별 집계
-- `fct_monthly_active_users` — MAU 월별 집계
-- `fct_retention_cohort` — 코호트 리텐션
-기존 모델로 분석 가능하면 재사용, 불가능할 경우만 신규 모델 작성.
-
-### 3단계: 비용 사전 검증 (필수)
-새 쿼리가 필요한 경우 반드시 dry-run으로 비용 확인:
-```bash
-bq query --dry_run --use_legacy_sql=false "[SQL]"
-```
-예상 스캔량과 비용($5/TB 기준)을 출력합니다.
-1GB 초과 시 쿼리 최적화(파티션 필터, SELECT * 제거, mart 재사용) 후 재확인.
-
-### 4단계: dbt 모델 작성 (필요 시만)
-기존 mart로 충분하지 않은 경우에만:
-- `models/marts/` 하위에 `fct_` 또는 `dim_` 접두사로 파일 생성
-- `schema.yml`에 `unique` + `not_null` 테스트 추가
-- `dbt run --select [모델명]`으로 빌드 확인
-
-### 5단계: marimo 노트북 생성
-파일 경로: `analyses/analysis_[지표]_[YYYYMM].py`
-구조 (순서대로):
-1. 분석 제목·기간·핵심 발견 요약 (`mo.md` 셀)
-2. BigQuery 연결 및 데이터 로드
-3. 데이터 변환·집계 계산
-4. 시각화 (plotly 또는 altair)
-5. 결론 및 제안 (`mo.md` 셀)
-
-### 6단계: 완료 증거 저장
-`evidence/query_cost_log.json`에 실행된 쿼리의 비용 정보 기록:
-```json
-{
-  "timestamp": "[ISO 8601]",
-  "analysis_topic": "[분석 주제]",
-  "queries": [
-    {
-      "sql_preview": "[SQL 앞 100자]",
-      "estimated_bytes": 0,
-      "cost_usd": 0.0,
-      "within_threshold": true
-    }
-  ]
-}
-```
-
-## marimo 노트북 작성 규약
-
-- 차트 제목·축 레이블·범례: **한국어**
-- 숫자: 천 단위 쉼표, 비율은 소수점 2자리 (%)
-- BigQuery 연결: `google.cloud.bigquery.Client(project=os.environ["BQ_PROJECT_ID"])`
-- 변수명·함수명: 영어, 주석: 한국어
-
-## 출력
-
-분석 완료 후:
-```
-## 분석 완료
-
-### 생성된 파일
-- 📓 analyses/analysis_[주제]_[기간].py
-- 📦 models/marts/fct_[이름].sql (신규 모델이 있을 경우)
-
-### BigQuery 비용
-- 예상 스캔량: X.X GB
-- 예상 비용: $X.XXXX USD (on-demand $5/TB 기준)
-
-### dbt 테스트
-- ✅ N개 통과 / ❌ N개 실패
-```
-
-## 제약 조건
-
-- **금지**: 쿼리 비용 사전 확인 없이 bq query 실행
-- **금지**: `staging/` 레이어 직접 쿼리 (mart 모델 기반으로 작성)
-- **금지**: 기존 marimo 노트북 파일 덮어쓰기 (새 파일명 생성)
-- **필수**: `analyses/` 경로로 노트북 저장
-- **필수**: 완료 증거 JSON 저장 (`evidence/query_cost_log.json`)
+## Constraints
+- 반드시 dbt mart 모델을 통해 데이터 접근 (raw 테이블 직접 접근 금지)
+- BigQuery dry-run 비용 확인 후 진행
+- 노트북 파일명은 analysis_[metric]_[YYYYMM].py 형식 준수
+- 환경 변수 사용 (GCP_PROJECT_ID, BQ_DATASET_ANALYTICS 등 하드코딩 금지)
 EOF
 ```
 
@@ -794,52 +674,38 @@ ls analyses/*.py
 
 ```bash
 cat > .claude/commands/check-cost.md << 'EOF'
-# /check-cost — BigQuery 쿼리 비용 사전 확인
+# /check-cost — BigQuery 쿼리 비용 사전 추정
 
-SQL 쿼리를 입력받아 BigQuery dry-run으로 예상 스캔량과 비용을 조회합니다.
-실제 쿼리 실행 전에 비용을 확인하는 습관을 위한 커맨드입니다.
+BigQuery dry-run을 사용하여 쿼리 실행 전 비용을 추정합니다.
 
-## 입력
+## Input
+- `$ARGUMENTS`: SQL 쿼리 또는 자연어 설명 (예: "SELECT count(*) FROM analytics.fct_daily_active_users")
 
-- `$ARGUMENTS`: 비용을 확인할 SQL 쿼리 텍스트
-  - 예: `SELECT COUNT(*) FROM \`project.dataset.fct_daily_active_users\``
+## Execution Steps
+1. `$ARGUMENTS`가 SQL이면 직접 사용, 자연어면 적절한 SQL 생성
+2. dry-run 실행: `bq query --dry_run --use_legacy_sql=false "$SQL"`
+3. 스캔 바이트 추출 및 비용 계산 ($5/TB on-demand)
+4. 안전성 판단:
+   - ✅ Safe: < 500MB
+   - ⚠️ Warning: 500MB ~ 1GB
+   - ❌ Dangerous: > 1GB
+5. evidence/query_cost_log.json에 결과 기록
 
-## 실행 단계
-
-### 1단계: dry-run 실행
-```bash
-bq query --dry_run --use_legacy_sql=false "$ARGUMENTS"
+## Output
+```
+=== BigQuery 비용 추정 ===
+쿼리: [SQL]
+스캔 예상: [N] MB ([N] bytes)
+비용 추정: $[N] (on-demand $5/TB)
+판정: [✅ Safe / ⚠️ Warning / ❌ Dangerous]
 ```
 
-### 2단계: 비용 계산 및 판정
-스캔 바이트 수를 가져와 다음 기준으로 판정:
-- **✅ 안전 범위**: 1GB 미만 — 예상 비용 $0.005 미만
-- **⚠️ 주의 (1~10GB)**: 최적화 검토 권장 — 예상 비용 $0.005~$0.05
-- **❌ 위험 (10GB 초과)**: 실행 전 반드시 재검토 필요 — 예상 비용 $0.05 이상
+- `evidence/query_cost_log.json` — 비용 추정 로그
 
-### 3단계: 최적화 제안 (주의/위험 판정 시)
-비용이 높을 경우:
-1. WHERE 절에 날짜 파티션 필터(`_PARTITIONDATE`) 추가
-2. `SELECT *` 대신 필요한 컬럼만 명시
-3. mart 모델(`fct_*`) 사용으로 사전 집계 데이터 활용
-
-## 출력
-
-```
-## BigQuery 비용 확인
-
-**SQL 미리보기**: [SQL 앞 100자]...
-**예상 스캔량**: X.XX GB (X bytes)
-**예상 비용**: $X.XXXX USD (on-demand $5/TB 기준)
-**판정**: ✅ 안전 범위 | ⚠️ 주의 | ❌ 위험
-
-[주의/위험 판정 시] **최적화 제안**: ...
-```
-
-## 제약 조건
-
-- `--dry_run` 없이 실제 쿼리를 실행하지 않음 (비용 발생 방지)
-- 결과를 `evidence/query_cost_log.json`에 추가 기록
+## Constraints
+- 실제 쿼리를 실행하지 않음 (dry-run만 실행)
+- 환경 변수 사용 (프로젝트 ID, 데이터셋명 하드코딩 금지)
+- BQ_COST_LIMIT_BYTES 환경 변수 참조
 EOF
 ```
 
@@ -856,110 +722,79 @@ claude "/check-cost SELECT COUNT(*) FROM \`<project>.fittrack_analytics.fct_dail
 ```bash
 # /validate-models — dbt 모델 빌드 및 테스트 실행
 cat > .claude/commands/validate-models.md << 'EOF'
-# /validate-models — dbt 모델 빌드·테스트 및 결과 보고
+# /validate-models — dbt 모델 검증 및 테스트 결과 기록
 
-`dbt run` → `dbt test` 순서로 실행하고 결과를 요약하여 증거 파일에 저장합니다.
+dbt 테스트를 실행하여 모델 품질을 검증하고 결과를 JSON으로 저장합니다.
 
-## 입력
+## Input
+- `$ARGUMENTS`: 검증 대상 모델 (선택사항, 예: "staging", "marts", 또는 특정 모델명)
 
-- `$ARGUMENTS`: 선택적. 특정 모델 이름 지정 시 해당 모델만 실행
-  - 예: `/validate-models fct_daily_active_users` — 특정 모델만
-  - 빈 경우: 전체 모델 실행
+## Execution Steps
+1. `$ARGUMENTS`로 대상 범위 결정 (없으면 전체 모델)
+2. dbt 테스트 실행: `dbt test` 또는 `dbt test --select $ARGUMENTS`
+3. 테스트 결과 파싱 (통과/실패/경고/에러 수)
+4. evidence/dbt_test_results.json에 결과 기록
 
-## 실행 단계
+## Output
+- `evidence/dbt_test_results.json` — 테스트 결과 JSON
 
-### 1단계: dbt 의존성 확인
-`dbt deps`를 실행하여 패키지가 설치되어 있는지 확인합니다.
-
-### 2단계: dbt run
-`$ARGUMENTS`가 있으면 `dbt run --select $ARGUMENTS`, 없으면 `dbt run` 실행.
-
-### 3단계: dbt test
-`dbt test` 실행. 실패한 테스트의 이름과 모델을 수집합니다.
-
-### 4단계: 결과 저장
-`evidence/dbt_test_results.json`에 저장:
 ```json
 {
-  "timestamp": "[ISO 8601]",
-  "run_scope": "전체 | 특정 모델명",
-  "total_tests": 0,
-  "passed": 0,
-  "failed": 0,
-  "failed_tests": []
+  "timestamp": "2026-01-15T10:30:00+09:00",
+  "total_tests": 15,
+  "passed": 14,
+  "failed": 1,
+  "warnings": 0,
+  "errors": 0,
+  "failed_tests": ["test_name_here"],
+  "target_selection": "$ARGUMENTS or 'all'"
 }
 ```
 
-## 출력
-
-```
-## dbt 검증 결과
-
-**실행 범위**: 전체 / [모델명]
-**빌드**: ✅ N개 성공 / ❌ N개 실패
-**테스트**: ✅ N개 통과 / ❌ N개 실패
-
-[실패한 테스트가 있을 경우]
-**실패 상세**:
-- [테스트명]: [모델명] — [실패 원인]
-```
-
-## 제약 조건
-
-- dbt 실패 시 중단하지 않고 전체 결과를 수집 후 보고
-- 증거 파일 저장은 성공/실패 무관하게 반드시 수행
+## Constraints
+- dbt test 실행 전 dbt compile로 문법 검증
+- JSON에 total_tests, passed, failed 필드 필수 포함
+- 실패한 테스트의 구체적 이름 기록
 EOF
 
 # /generate-report — marimo 노트북 → HTML/PDF 내보내기
 cat > .claude/commands/generate-report.md << 'EOF'
-# /generate-report — marimo 노트북을 HTML/PDF 리포트로 내보내기
+# /generate-report — marimo 노트북 보고서 내보내기
 
-marimo 노트북을 실행하여 HTML과 PDF 형식으로 내보내고 결과를 기록합니다.
+marimo 노트북을 HTML 보고서로 내보내고 매니페스트를 기록합니다.
 
-## 입력
+## Input
+- `$ARGUMENTS`: 대상 노트북 경로 또는 패턴 (예: "analyses/analysis_dau_202601.py")
 
-- `$ARGUMENTS`: marimo 노트북 파일 경로
-  - 예: `/generate-report analyses/analysis_dau_202601.py`
+## Execution Steps
+1. `$ARGUMENTS`로 대상 노트북 식별 (없으면 analyses/ 디렉터리 전체)
+2. 각 노트북에 대해 marimo export 실행: `marimo export html [notebook.py] -o [output.html]`
+3. 생성된 파일 목록 수집
+4. evidence/report_manifest.json에 매니페스트 기록
 
-## 실행 단계
+## Output
+- 생성된 HTML 보고서 파일
+- `evidence/report_manifest.json` — 보고서 매니페스트
 
-### 1단계: 노트북 존재 확인
-`$ARGUMENTS` 경로에 파일이 존재하는지 확인합니다.
-
-### 2단계: HTML 내보내기
-```bash
-uv run marimo export html $ARGUMENTS -o reports/$(basename $ARGUMENTS .py).html
-```
-예상 비용: $0 (BigQuery 미사용)
-
-### 3단계: 리포트 매니페스트 저장
-`evidence/report_manifest.json`에 저장:
 ```json
 {
-  "timestamp": "[ISO 8601]",
-  "notebook_source": "[노트북 파일 경로]",
+  "timestamp": "2026-01-15T10:30:00+09:00",
   "outputs": [
-    { "format": "html", "path": "reports/[파일명].html", "size_bytes": 0 }
-  ]
+    {
+      "source": "analyses/analysis_dau_202601.py",
+      "format": "html",
+      "path": "analyses/analysis_dau_202601.html",
+      "size_bytes": 45678
+    }
+  ],
+  "total_reports": 1
 }
 ```
 
-## 출력
-
-```
-## 리포트 생성 완료
-
-**소스**: [노트북 경로]
-**생성 파일**:
-- 📄 reports/[파일명].html (X KB)
-
-**확인 방법**: 브라우저에서 HTML 파일 열기
-```
-
-## 제약 조건
-
-- `reports/` 디렉토리가 없으면 자동 생성
-- 같은 이름의 리포트 파일이 존재하면 타임스탬프를 파일명에 추가하여 덮어쓰기 방지
+## Constraints
+- marimo export 사용 (marimo run이 아님)
+- JSON에 outputs[].format, outputs[].path 필드 필수 포함
+- 노트북이 존재하지 않으면 에러 메시지와 함께 중단
 EOF
 ```
 
@@ -987,8 +822,8 @@ ls analyses/
 
 > **$ARGUMENTS 활용 원칙**:
 > - 구조화 입력(`키: 값` 형식)이 자유 형식 텍스트보다 에이전트의 파싱 일관성이 높습니다
-> - 커맨드 파일의 `## 입력` 섹션에서 예시 형식을 명확하게 제시하면 에이전트가 정확하게 파싱합니다
-> - `$ARGUMENTS`가 비어있을 경우의 기본값 동작을 `## 제약 조건`에 명시하세요
+> - 커맨드 파일의 `## Input` 섹션에서 예시 형식을 명확하게 제시하면 에이전트가 정확하게 파싱합니다
+> - `$ARGUMENTS`가 비어있을 경우의 기본값 동작을 `## Constraints`에 명시하세요
 
 **활동 6: 커맨드 체인 실습 및 완료 증거 설계** *(예상 소요: 15~20분)*
 
@@ -1116,74 +951,78 @@ python -m json.tool .claude/settings.json | grep -A 20 '"permissions"'
 
 **활동 2: 데이터 분석 에이전트를 위한 허용 규칙(allow) 설계 및 구현** *(예상 소요: 20~25분)*
 
-> 💰 **BigQuery 비용 관련 권한**: `Bash(bq:*)` 허용 규칙은 모든 BigQuery CLI 명령을 허용합니다. 비용 제어를 위해 훅(`bq-cost-guard.sh`)과 함께 사용해야 합니다. 권한 설정만으로는 비용을 제어할 수 없습니다 — 훅이 실제 비용 가드를 담당합니다.
+> 💰 **BigQuery 비용 관련 권한**: 정본 `.claude/settings.json`의 `allow`는 비용이 발생하지 않는 `Bash(bq query --dry_run:*)`만 통과시킵니다. 실제 `bq query` 실행은 모듈 1의 PreToolUse 훅(`bq-cost-guard.sh`)이 dry-run으로 비용을 확인한 뒤 통과/차단합니다 — 권한 설정만으로는 비용을 제어할 수 없고, 훅이 실제 비용 가드를 담당합니다.
 
-FitTrack 데이터 분석 에이전트에게 필요한 최소 권한을 설계합니다:
+아래는 정본 `.claude/settings.json`의 `permissions.allow` 전체입니다 (모듈 1에서 만들어 모듈 3에서 검토·확정한 최소 권한 집합):
 
 ```json
 {
   "permissions": {
     "allow": [
-      "Bash(bq:*)",
-      "Bash(bq query:*)",
       "Bash(dbt run:*)",
       "Bash(dbt test:*)",
       "Bash(dbt compile:*)",
-      "Bash(marimo run:*)",
-      "Bash(marimo export:*)",
+      "Bash(dbt debug:*)",
+      "Bash(dbt deps:*)",
+      "Bash(dbt ls:*)",
+      "Bash(dbt source freshness:*)",
+      "Bash(bq query --dry_run:*)",
+      "Bash(git status:*)",
+      "Bash(git log:*)",
+      "Bash(git diff:*)",
       "Bash(git add:*)",
       "Bash(git commit:*)",
-      "Bash(git push origin HEAD:*)",
-      "Bash(gh issue comment:*)",
-      "Bash(gh issue edit --add-label:*)",
-      "Bash(gh issue edit --remove-label:*)",
-      "Bash(gh pr create:*)"
+      "Bash(git checkout:*)",
+      "Bash(git push:*)",
+      "Bash(gh issue:*)",
+      "Bash(gh pr:*)",
+      "Bash(python3:*)",
+      "Bash(jq:*)",
+      "Read",
+      "Write",
+      "Edit"
     ]
   }
 }
 ```
 
-허용 규칙 설계 원칙:
-- **작업 범위 명시**: `bq:*`보다 `bq query:*`가 더 안전하지만, 유연성을 위해 `bq:*` 허용 후 `deny`로 위험 명령 차단
-- **git 작업 분리**: `git push`는 허용하되, `git push --force`는 deny 목록에서 차단
-- **GitHub CLI**: 이슈 관리 및 PR 생성에 필요한 `gh` 명령만 허용
+허용 규칙 설계 원칙 (정본 settings.json 기준):
+- **비용 없는 작업만 직접 허용**: `bq query --dry_run:*`만 allow에 두고, 비용이 발생하는 실제 `bq query`는 `bq-cost-guard.sh` 훅으로 통제
+- **git 작업 분리**: `git push:*`는 허용하되, `git push --force:*`는 deny 목록에서 차단
+- **GitHub CLI**: 이슈·PR 관리에 필요한 `gh issue:*`, `gh pr:*`만 허용
+- **읽기/쓰기·분석 보조**: `Read`, `Write`, `Edit`와 `python3:*`, `jq:*` 허용
 
 다음 Claude Code 프롬프트로 권한 설계를 에이전트에게 요청합니다:
 
 ```bash
 claude "현재 .claude/settings.json을 분석하고, FitTrack 데이터 분석 에이전트가
-필요한 최소 권한을 permissions.allow 섹션에 추가해줘.
+필요한 최소 권한이 permissions.allow에 모두 포함되어 있는지 검토해줘.
 
 필요한 작업 유형:
-1. BigQuery 쿼리 실행 (bq query)
-2. dbt 모델 실행/테스트/컴파일 (dbt run, dbt test, dbt compile)
-3. marimo 노트북 실행 및 HTML/PDF 내보내기
-4. Git 작업 (add, commit, push)
-5. GitHub CLI로 이슈 코멘트, 라벨 관리, PR 생성
+1. dbt 모델 실행/테스트/컴파일/디버그 (dbt run, dbt test, dbt compile, dbt debug, dbt deps, dbt ls)
+2. 비용 없는 BigQuery 비용 확인 (bq query --dry_run)
+3. Git 작업 (status, log, diff, add, commit, checkout, push)
+4. GitHub CLI로 이슈·PR 관리 (gh issue, gh pr)
+5. 분석 보조 (python3, jq) 및 파일 도구 (Read, Write, Edit)
 
-각 규칙에 왜 이 권한이 필요한지 JSON 주석(// 형식)으로 설명하고,
+실제 bq query(비용 발생)는 allow에 두지 말고 bq-cost-guard.sh 훅으로 통제하는 이유를 설명하고,
 최소 권한 원칙(principle of least privilege)을 적용해줘.
 
-수정 후 python -m json.tool .claude/settings.json으로 문법 검증해줘."
+검토 후 python -m json.tool .claude/settings.json으로 문법 검증해줘."
 ```
 
 **활동 3: 위험 작업 차단을 위한 거부 규칙(deny) 구현 및 동작 검증** *(예상 소요: 20~25분)*
 
-되돌리기 어려운(irreversible) 작업을 차단하는 거부 규칙을 구현하고, 실제로 차단되는지 검증합니다:
+되돌리기 어려운(irreversible) 작업을 차단하는 거부 규칙을 구현하고, 실제로 차단되는지 검증합니다. 아래는 정본 `.claude/settings.json`의 `permissions.deny` 전체입니다 (`deny`는 최소·구체적으로 유지 — 너무 넓은 deny는 에이전트를 무력화):
 
 ```json
 {
   "permissions": {
     "deny": [
       "Bash(git push --force:*)",
-      "Bash(git push --force-with-lease:*)",
-      "Bash(git reset --hard:*)",
       "Bash(bq rm:*)",
-      "Bash(bq update --schema:*)",
-      "Bash(gcloud projects delete:*)",
-      "Bash(gcloud iam service-accounts delete:*)",
-      "Bash(rm -rf:*)",
-      "Bash(gh repo delete:*)"
+      "Bash(dbt run --full-refresh:*)",
+      "Bash(rm -rf:*)"
     ]
   }
 }
@@ -1208,22 +1047,22 @@ claude "bq rm fittrack_raw.raw_events 테이블을 삭제해줘"
 GitHub Actions 워크플로 YAML에서 CI 환경의 권한을 설계합니다:
 
 ```yaml
-# .github/workflows/auto-analyze.yml 권한 섹션 (개념도)
-name: Auto Analyze
+# .github/workflows/auto-analyze.yml 권한 섹션 (정본 발췌 — 전체 워크플로는 모듈 4에서 구현)
+name: Auto Analyze Pipeline
 
 on:
   issues:
     types: [labeled]
 
-jobs:
-  orchestrate:
-    runs-on: ubuntu-latest
-    # GitHub API 접근 권한 — 최소 권한 원칙 적용
-    permissions:
-      issues: write        # 이슈 코멘트 작성 + 라벨 부착/제거
-      contents: write      # 파일 커밋 + 브랜치 푸시
-      pull-requests: write # PR 생성 + 설명 작성
+# 워크플로 실행에 필요한 최소 권한
+permissions:
+  issues: write        # 이슈 코멘트 작성 + 라벨 부착/제거
+  contents: write      # 파일 커밋, 브랜치 생성
+  pull-requests: write # PR 생성 + 라벨 부착
 
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
     steps:
       # ... (상세 단계는 모듈 4에서 구현)
 ```
@@ -1238,7 +1077,7 @@ jobs:
 ### 허용 규칙 (allow) 근거
 | 규칙 | 필요한 이유 |
 |------|------------|
-| `Bash(bq:*)` | BigQuery CLI로 분석 쿼리 실행 |
+| `Bash(bq query --dry_run:*)` | 비용 없는 dry-run으로 쿼리 스캔량 사전 확인 |
 | `Bash(dbt run:*)` | dbt 모델 빌드 |
 | ... | ... |
 
@@ -1471,14 +1310,18 @@ stage-1-parse.md부터 stage-7-report.md까지 7개 파일을 생성해줘.
 > 💰 **BigQuery 비용 추정**: 합성 데이터 기준 7단계 파이프라인 1회 실행 비용은 약 $0.01~$0.05입니다. `evidence/query_cost_log.json`에서 단계별 스캔 바이트를 실시간으로 추적합니다.
 
 ```bash
-# 1. 분석 요청 이슈 생성
+# 1. 분석 요청 이슈 생성 (이슈 본문은 인라인으로 작성)
 gh issue create \
   --title "[분석] FitTrack 2026년 1분기 DAU/MAU 트렌드 분석" \
-  --body "$(cat .github/ISSUE_TEMPLATE/analysis-request.md | sed 's/---//g')" \
-  --label "분석요청"
+  --body "## 분석 요청
+
+**기간**: 2026-01-01 ~ 2026-03-31
+**지표**: DAU, MAU, DAU/MAU 비율
+**세분화**: 플랫폼별 (iOS, Android)
+**목적**: 1분기 사용자 활동 트렌드 파악 및 리텐션 분석"
 
 # 2. 이슈 번호 확인
-ISSUE_NUMBER=$(gh issue list --label "분석요청" --limit 1 --json number -q '.[0].number')
+ISSUE_NUMBER=$(gh issue list --limit 1 --json number -q '.[0].number')
 echo "이슈 번호: #$ISSUE_NUMBER"
 
 # 3. auto-analyze 라벨 부착 — 파이프라인 시작
