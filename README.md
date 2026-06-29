@@ -86,43 +86,34 @@ claude .
 
 ```
 data-analysis-with-claude/
-├── README.md                          ← 코스 랜딩 페이지 (이 파일)
-├── CLAUDE.md                          ← 레포 전체 Claude Code 에이전트 지침
-├── pyproject.toml                     ← 레포 전체 개발 도구 설정
-│
+├── README.md                          ← 코스 랜딩 페이지 및 모듈 네비게이션 (이 파일)
+├── AGENTS.md                          ← 레포 운영/편집 지침
+├── course-spec.md                     ← 코스 명세 (학습 목표·핵심 개념·자기 점검)
+├── build-guide.md                     ← 빌드 가이드 및 참조 구현 (모듈 1~4)
+├── env-vars-manifest.md               ← 전체 환경 변수 매니페스트
+├── instructor-setup-guide.md          ← 강사/자기학습자 환경 설정 가이드
+├── references/                        ← 공용 참고 자료 (BigQuery, 비용 관리 등)
+├── research/                          ← 하니스 엔지니어링 연구 노트
 ├── module-0-project-setup/            ← 모듈 0: 환경 설정 및 프로젝트 이해
 ├── module-1-hooks/                    ← 모듈 1: 훅과 설정 엔지니어링
 ├── module-2-slash-commands/           ← 모듈 2: 슬래시 커맨드 작성
 ├── module-3-orchestration/            ← 모듈 3: 권한 오케스트레이션
-├── module-4-error-handling/           ← 모듈 4: 종단간 통합 및 오류 처리
-│
-└── initialize/                        ← 코스 관리 (강사용)
-    ├── README.md                      ← 코스 개요 및 강사 가이드
-    ├── course-spec.md                 ← 코스 전체 명세
-    ├── env-vars-manifest.md           ← 전체 환경 변수 매니페스트
-    ├── instructor-setup-guide.md      ← 강사/자기학습자 환경 설정 가이드
-    ├── references/                    ← 참고 자료 (BigQuery, 비용 관리 등)
-    └── research/                      ← 하니스 엔지니어링 연구 노트
+└── module-4-error-handling/           ← 모듈 4: 종단간 통합 및 오류 처리
 ```
 
-각 모듈 디렉터리(`module-0/` ~ `module-4/`)는 독립적인 프로젝트 루트입니다:
-- `pyproject.toml` — 모듈별 Python 의존성
-- `dbt_project.yml` — dbt 프로젝트 설정
-- `.claude/settings.json` — Claude Code 에이전트 설정
-- `.github/workflows/` — GitHub Actions 워크플로 (참고용 템플릿)
-- `CLAUDE.md` — 모듈별 에이전트 지침 (이전 모듈 지침 누적 포함)
-- `.env.example` — 필수 환경변수 목록
+각 모듈 디렉터리는 독립 실행 가능한 프로젝트 루트입니다. 공통적으로 `README.md`, `CLAUDE.md`, `pyproject.toml`, `.env.example`를 포함하며, 코스가 진행될수록 `dbt_project.yml`, `.claude/settings.json`, `analyses/`, `.github/workflows/` 같은 하니스 자산이 단계적으로 추가됩니다.
 
 ---
 
 ## 참고 자료
 
-- [코스 개요 및 강사 가이드](initialize/README.md)
-- [코스 전체 명세](initialize/course-spec.md)
-- [환경 변수 매니페스트](initialize/env-vars-manifest.md)
-- [강사 설정 가이드](initialize/instructor-setup-guide.md)
-- [GCP/BigQuery 환경 설정](initialize/references/gcp-bigquery-setup.md)
-- [BigQuery 비용 관리 가이드](initialize/references/cost-management-guide.md)
+- [코스 명세](course-spec.md)
+- [빌드 가이드 (모듈 1~4 참조 구현)](build-guide.md)
+- [환경 변수 매니페스트](env-vars-manifest.md)
+- [강사 설정 가이드](instructor-setup-guide.md)
+- [GCP/BigQuery 환경 설정](references/gcp-bigquery-setup.md)
+- [BigQuery 비용 관리 가이드](references/cost-management-guide.md)
+- [학습 사이클 프레임워크](references/learning-cycle-framework.md)
 
 ---
 

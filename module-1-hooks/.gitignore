@@ -24,6 +24,7 @@ profiles.yml
 !packages.yml
 !models/**/*.yml
 !evidence/*.json
+!.claude/settings.json
 
 # Service account keys
 *-service-account-*.json
