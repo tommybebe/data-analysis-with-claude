@@ -15,7 +15,7 @@ This is a **DAU/MAU analysis project** for FitTrack, a B2C mobile fitness app. T
 ## Module 0 Scope
 
 Module 0 establishes the data infrastructure foundation. Learners:
-1. Set up the local development environment (uv, dbt, marimo, Claude Code CLI)
+1. Set up the local development environment (uv, dbt, Claude Code CLI; marimo is added in later modules)
 2. Configure GCP service account and GitHub Secrets
 3. Write synthetic data generation scripts and load data into BigQuery
 4. Set up the dbt project and write staging + mart models
