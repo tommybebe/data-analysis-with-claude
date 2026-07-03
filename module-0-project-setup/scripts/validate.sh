@@ -111,12 +111,6 @@ if [ ! -f .env ]; then
 else
   gcp_val=$(check_env_var "GCP_PROJECT_ID")
   cred_val=$(check_env_var "GOOGLE_APPLICATION_CREDENTIALS")
-  # ADC (oauth) is a valid local-dev auth path — no keyfile required.
-  adc_ok=false
-  if command -v gcloud >/dev/null 2>&1 && \
-     gcloud auth application-default print-access-token >/dev/null 2>&1; then
-    adc_ok=true
-  fi
   if [ "$gcp_val" = "NOT_FOUND" ] || [ "$gcp_val" = "EMPTY" ]; then
     record_result 0 "환경 변수" "❌" "GCP_PROJECT_ID가 비어 있음"
   elif [ "$cred_val" != "NOT_FOUND" ] && [ "$cred_val" != "EMPTY" ]; then
@@ -126,11 +120,19 @@ else
     else
       record_result 0 "환경 변수" "⚠️" "인증 파일 경로가 존재하지 않음: $cred_val"
     fi
-  elif [ "$adc_ok" = true ]; then
-    # oauth/ADC path — GOOGLE_APPLICATION_CREDENTIALS not needed
-    record_result 0 "환경 변수" "✅" "GCP_PROJECT_ID + gcloud ADC(oauth) 인증 확인 — 키파일 불필요"
   else
-    record_result 0 "환경 변수" "❌" "인증 없음 — 키파일(GOOGLE_APPLICATION_CREDENTIALS) 설정 또는 'gcloud auth application-default login' 실행"
+    # No keyfile — fall back to oauth/ADC (valid local-dev auth path, no keyfile required).
+    # Mint a token only here, where ADC is the deciding auth path.
+    adc_ok=false
+    if command -v gcloud >/dev/null 2>&1 && \
+       gcloud auth application-default print-access-token >/dev/null 2>&1; then
+      adc_ok=true
+    fi
+    if [ "$adc_ok" = true ]; then
+      record_result 0 "환경 변수" "✅" "GCP_PROJECT_ID + gcloud ADC(oauth) 인증 확인 — 키파일 불필요"
+    else
+      record_result 0 "환경 변수" "❌" "인증 없음 — 키파일(GOOGLE_APPLICATION_CREDENTIALS) 설정 또는 'gcloud auth application-default login' 실행"
+    fi
   fi
 fi
 
@@ -191,16 +193,16 @@ else
   record_result 4 "dbt 설치 상태" "❌" "uv 미설치"
 fi
 
-# --- Check 5: marimo installation ---
+# --- Check 5: marimo installation (optional in Module 0 — introduced in later modules) ---
 if check_command_available uv; then
   marimo_out=$(uv run marimo --version 2>&1 || true)
   if echo "$marimo_out" | grep -qE "[0-9]+\.[0-9]+"; then
     record_result 5 "marimo 설치 상태" "✅" "$(echo "$marimo_out" | head -1)"
   else
-    record_result 5 "marimo 설치 상태" "⚠️" "이 모듈에서는 선택 사항"
+    record_result 5 "marimo 설치 상태" "✅" "선택 사항 — 이후 모듈에서 도입 (미설치, 통과)"
   fi
 else
-  record_result 5 "marimo 설치 상태" "⚠️" "uv 미설치 (이 모듈에서 marimo는 선택 사항)"
+  record_result 5 "marimo 설치 상태" "✅" "선택 사항 — 이후 모듈에서 도입 (uv 미설치로 미확인)"
 fi
 
 # --- Check 6: GitHub Secrets ---
