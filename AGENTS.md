@@ -62,6 +62,24 @@ Learners can start at any module independently.
 - `env-vars-manifest.md` is the authoritative environment variables reference for the entire course.
 - `research/` contains harness engineering research notes for course design reference.
 
+## Environment & dbt Sharp Edges
+
+- **Python must stay ≤ 3.12.** dbt-core 1.7–1.11 (via `mashumaro`) fails to import on
+  Python 3.13+ (`UnserializableField: Field "schema" … is not serializable`). Every
+  `module-*/pyproject.toml` pins `requires-python = ">=3.11,<3.13"` and ships a
+  `.python-version` of `3.12` so `uv sync` never resolves a too-new interpreter. Do not
+  loosen the upper bound while on dbt 1.x. `module-0`'s `scripts/validate.sh` Check 4
+  asserts the venv Python is < 3.13.
+- **dbt-bigquery `+schema:` concatenates, it does not replace.** With the default
+  `generate_schema_name`, a folder-level `+schema: X` in `dbt_project.yml` materializes
+  models into dataset `<profile.dataset>_X` (e.g. `analytics_analytics`), not `X`. Leave
+  `+schema` off so models land in the profile's `dataset`, unless you deliberately want the
+  concatenated dataset name.
+- **Local dev auth is oauth/ADC; CI is a service-account keyfile.** For local dbt use
+  `method: oauth` (`gcloud auth application-default login`, no keyfile). The
+  service-account keyfile path (`GOOGLE_APPLICATION_CREDENTIALS`) is the module-4 CI route.
+  `validate.sh` Check 0 accepts either.
+
 ## Prohibited
 
 - Do not include production data or real API keys in examples.

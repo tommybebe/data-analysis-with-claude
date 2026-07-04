@@ -105,7 +105,7 @@ print_results() {
 echo "🔍 ${MODULE_NAME} (${MODULE_TITLE}) 검증을 시작합니다..."
 echo ""
 
-# --- Check 0: Environment variables ---
+# --- Check 0: Environment variables (auth: service-account keyfile OR oauth/ADC) ---
 if [ ! -f .env ]; then
   record_result 0 "환경 변수" "❌" ".env 파일 없음 — .env.example을 .env로 복사 후 값 입력"
 else
@@ -113,12 +113,26 @@ else
   cred_val=$(check_env_var "GOOGLE_APPLICATION_CREDENTIALS")
   if [ "$gcp_val" = "NOT_FOUND" ] || [ "$gcp_val" = "EMPTY" ]; then
     record_result 0 "환경 변수" "❌" "GCP_PROJECT_ID가 비어 있음"
-  elif [ "$cred_val" = "NOT_FOUND" ] || [ "$cred_val" = "EMPTY" ]; then
-    record_result 0 "환경 변수" "❌" "GOOGLE_APPLICATION_CREDENTIALS가 비어 있음"
-  elif [ ! -f "$cred_val" ]; then
-    record_result 0 "환경 변수" "⚠️" "인증 파일 경로가 존재하지 않음: $cred_val"
+  elif [ "$cred_val" != "NOT_FOUND" ] && [ "$cred_val" != "EMPTY" ]; then
+    # service-account keyfile path provided
+    if [ -f "$cred_val" ]; then
+      record_result 0 "환경 변수" "✅" "GCP_PROJECT_ID + 서비스 계정 키파일 설정 완료"
+    else
+      record_result 0 "환경 변수" "⚠️" "인증 파일 경로가 존재하지 않음: $cred_val"
+    fi
   else
-    record_result 0 "환경 변수" "✅" "GCP_PROJECT_ID, GOOGLE_APPLICATION_CREDENTIALS 설정 완료"
+    # No keyfile — fall back to oauth/ADC (valid local-dev auth path, no keyfile required).
+    # Mint a token only here, where ADC is the deciding auth path.
+    adc_ok=false
+    if command -v gcloud >/dev/null 2>&1 && \
+       gcloud auth application-default print-access-token >/dev/null 2>&1; then
+      adc_ok=true
+    fi
+    if [ "$adc_ok" = true ]; then
+      record_result 0 "환경 변수" "✅" "GCP_PROJECT_ID + gcloud ADC(oauth) 인증 확인 — 키파일 불필요"
+    else
+      record_result 0 "환경 변수" "❌" "인증 없음 — 키파일(GOOGLE_APPLICATION_CREDENTIALS) 설정 또는 'gcloud auth application-default login' 실행"
+    fi
   fi
 fi
 
@@ -150,32 +164,45 @@ else
   record_result 3 "uv 패키지 매니저" "❌" "uv 미설치 — curl -LsSf https://astral.sh/uv/install.sh | sh"
 fi
 
-# --- Check 4: dbt installation ---
+# --- Check 4: dbt installation (guards against Python 3.13+ which breaks dbt import) ---
 if check_command_available uv; then
-  dbt_out=$(uv run dbt --version 2>&1 || true)
-  if echo "$dbt_out" | grep -qi "dbt-core"; then
-    if echo "$dbt_out" | grep -qi "bigquery"; then
-      record_result 4 "dbt 설치 상태" "✅" "dbt-core + bigquery 어댑터 확인"
-    else
-      record_result 4 "dbt 설치 상태" "❌" "bigquery 어댑터 미설치"
-    fi
+  # dbt-core 1.7–1.11 does not import on Python 3.13+ (mashumaro incompatibility).
+  # requires-python (<3.13) and .python-version (3.12) should prevent this; assert it.
+  py_ver=$(uv run python -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')" 2>/dev/null || echo "?")
+  py_major=${py_ver%%.*}
+  py_minor=${py_ver#*.}
+  py_incompatible=false
+  if [ "$py_major" = "3" ] && [ "${py_minor:-0}" -ge 13 ] 2>/dev/null; then
+    py_incompatible=true
+  fi
+  if [ "$py_incompatible" = true ]; then
+    record_result 4 "dbt 설치 상태" "❌" "Python ${py_ver} 감지 — dbt는 3.12 이하 필요 (.python-version=3.12 / pyproject requires-python 확인)"
   else
-    record_result 4 "dbt 설치 상태" "❌" "dbt-core 미설치 — uv sync 실행"
+    dbt_out=$(uv run dbt --version 2>&1 || true)
+    if echo "$dbt_out" | grep -qi "dbt-core"; then
+      if echo "$dbt_out" | grep -qi "bigquery"; then
+        record_result 4 "dbt 설치 상태" "✅" "dbt-core + bigquery 어댑터 확인 (Python ${py_ver})"
+      else
+        record_result 4 "dbt 설치 상태" "❌" "bigquery 어댑터 미설치"
+      fi
+    else
+      record_result 4 "dbt 설치 상태" "❌" "dbt-core 미설치 — uv sync 실행"
+    fi
   fi
 else
   record_result 4 "dbt 설치 상태" "❌" "uv 미설치"
 fi
 
-# --- Check 5: marimo installation ---
+# --- Check 5: marimo installation (optional in Module 0 — introduced in later modules) ---
 if check_command_available uv; then
   marimo_out=$(uv run marimo --version 2>&1 || true)
   if echo "$marimo_out" | grep -qE "[0-9]+\.[0-9]+"; then
     record_result 5 "marimo 설치 상태" "✅" "$(echo "$marimo_out" | head -1)"
   else
-    record_result 5 "marimo 설치 상태" "⚠️" "이 모듈에서는 선택 사항"
+    record_result 5 "marimo 설치 상태" "✅" "선택 사항 — 이후 모듈에서 도입 (미설치, 통과)"
   fi
 else
-  record_result 5 "marimo 설치 상태" "⚠️" "uv 미설치 (이 모듈에서 marimo는 선택 사항)"
+  record_result 5 "marimo 설치 상태" "✅" "선택 사항 — 이후 모듈에서 도입 (uv 미설치로 미확인)"
 fi
 
 # --- Check 6: GitHub Secrets ---

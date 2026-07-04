@@ -2,7 +2,7 @@
 name = "fittrack-analysis-module-3"
 version = "0.1.0"
 description = "Module 3: Permissions Orchestration — agent boundary design via permissions.allow/deny and GitHub Actions permissions"
-requires-python = ">=3.11"
+requires-python = ">=3.11,<3.13"
 
 dependencies = [
     # --- Module 0 prerequisites (data infrastructure) ---

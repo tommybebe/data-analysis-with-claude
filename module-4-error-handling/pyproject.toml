@@ -2,7 +2,7 @@
 name = "fittrack-analysis-module-4"
 version = "0.1.0"
 description = "Module 4: End-to-End Integration & Error Handling — full harness integration with GitHub Actions 7-stage pipeline and error recovery"
-requires-python = ">=3.11"
+requires-python = ">=3.11,<3.13"
 
 dependencies = [
     # --- Module 0 prerequisites (data infrastructure) ---

@@ -2,7 +2,7 @@
 name = "fittrack-analysis-module-0"
 version = "0.1.0"
 description = "Module 0: Project Setup — environment and data infrastructure for DAU/MAU analysis"
-requires-python = ">=3.11"
+requires-python = ">=3.11,<3.13"
 # Module 0 dependencies: dbt for transformations, BigQuery client for data loading.
 # Hooks, marimo, and CI/CD tooling are added in later modules.
 dependencies = [

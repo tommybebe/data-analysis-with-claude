@@ -190,7 +190,7 @@ SQL, dbt, Python을 실무에서 사용하는 **경력 데이터 분석가**
 
 이 모듈을 완료하면 다음을 **관찰 가능한 행동**으로 증명할 수 있습니다:
 
-- `setup.sh`를 실행하여 Claude Code CLI, uv, dbt, marimo가 포함된 로컬 개발 환경을 **설정할 수 있다** — 네 도구 모두 버전 번호가 출력되는 것을 터미널에서 확인 *(검증: `claude --version && uv --version && dbt --version && marimo --version` 출력)*
+- `setup.sh`를 실행하여 Claude Code CLI, uv, dbt가 포함된 로컬 개발 환경을 **설정할 수 있다** — 세 도구 모두 버전 번호가 출력되는 것을 터미널에서 확인 *(검증: `claude --version && uv --version && dbt --version` 출력. marimo는 이후 모듈에서 도입)*
 - GCP 서비스 계정 JSON 키를 생성하고 `gh secret set` 명령으로 GitHub Secrets(`GCP_SA_KEY`, `GCP_PROJECT_ID`, `CLAUDE_TOKEN`)를 **구성할 수 있다** — `gh secret list` 실행 시 세 항목이 모두 표시됨 *(검증: `gh secret list` 출력)*
 - `evidence/module-0-baseline.md` 파일을 직접 **작성할 수 있다** — Claude Code에게 레포 구조를 질문하고, 그 응답을 기준선(baseline) 문서로 기록 *(검증: `evidence/module-0-baseline.md` 파일 존재 및 내용)*
 - `dbt run && dbt test`를 실행하여 6개 모델 전체 빌드 성공, 테스트 0 Fail 상태를 만들 수 있다 *(검증: 터미널 출력의 `Completed successfully` 메시지)*
@@ -246,7 +246,7 @@ SQL, dbt, Python을 실무에서 사용하는 **경력 데이터 분석가**
 |------|--------|--------|--------|--------|--------|
 | `.claude/settings.json` | — | 훅·permissions 기초 | 커맨드에서 참조 | permissions.allow/deny 완성 | CI 환경 복제 |
 | dbt | 환경 검증 | 훅으로 자동 컴파일 | 커맨드에서 run/test | 권한 내에서 실행 | 자동 실행 (파이프라인) |
-| marimo | 버전 확인 | — | 리포트 커맨드 | — | 자동 생성 (stage:6~7) |
+| marimo | — (이후 모듈에서 도입) | — | 리포트 커맨드 | — | 자동 생성 (stage:6~7) |
 | Claude Code | 기준선 측정 | 훅/permissions 적용 | 커맨드 호출 | 권한 경계 테스트 | Agent SDK |
 | GitHub Issues | — | — | 커맨드 #번호 입력 | — | 트리거 소스 (라벨 전환) |
 
@@ -261,7 +261,7 @@ SQL, dbt, Python을 실무에서 사용하는 **경력 데이터 분석가**
 
 | # | 산출물 | 위치/형태 | 분류 |
 |---|--------|-----------|------|
-| 1 | 로컬 개발 환경 | 터미널에서 claude, uv, dbt, marimo 실행 가능 | 하니스 인프라 |
+| 1 | 로컬 개발 환경 | 터미널에서 claude, uv, dbt 실행 가능 (marimo는 이후 모듈에서 도입) | 하니스 인프라 |
 | 2 | BigQuery 합성 데이터 | `raw_events`(~50만 건), `raw_users`(~1만 명), `raw_sessions` 테이블 | 파이프라인 입력 |
 | 3 | dbt 빌드·테스트 결과 | staging + mart 모델 6개 전체 빌드 성공, 테스트 0 Fail | 파이프라인 산출물 |
 | 4 | GitHub Secrets | `GCP_SA_KEY`, `GCP_PROJECT_ID`, `CLAUDE_TOKEN`, 인증 토큰 | 하니스 설정 |
@@ -272,8 +272,8 @@ SQL, dbt, Python을 실무에서 사용하는 **경력 데이터 분석가**
 **[점검 1/6] 도구 설치 확인**
 
 - [ ] `claude --version` 실행 시 버전 번호가 출력되는가?
-  - **검증 명령**: 터미널에서 `claude --version && uv --version && dbt --version && marimo --version` 실행
-  - **✅ 합격 기준**: 네 도구 모두 버전 번호 출력 (예: `claude 1.x.x`, `uv 0.x.x`)
+  - **검증 명령**: 터미널에서 `claude --version && uv --version && dbt --version` 실행 (marimo는 이후 모듈에서 도입)
+  - **✅ 합격 기준**: 세 도구 모두 버전 번호 출력 (예: `claude 1.x.x`, `uv 0.x.x`)
   - **❌ 불합격 시 조치**: `setup.sh` 로그에서 실패한 설치 단계 확인 → `npm install -g @anthropic-ai/claude-code` 수동 실행 후 재확인
 
 **[점검 2/6] dbt 모델 빌드 확인**

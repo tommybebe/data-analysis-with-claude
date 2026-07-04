@@ -1823,7 +1823,9 @@ echo "     uv run dbt debug"
 name = "fittrack-analysis"
 version = "0.1.0"
 description = "FitTrack B2C 모바일 앱 DAU/MAU 분석 — 하니스 엔지니어링 실습 프로젝트"
-requires-python = ">=3.11"
+# 상한(<3.13) 고정 필수: dbt-core 1.x는 Python 3.13+에서 import 실패(mashumaro 비호환).
+# 상한이 없으면 uv가 3.13/3.14를 해석해 dbt 실행이 깨집니다.
+requires-python = ">=3.11,<3.13"
 dependencies = [
     "dbt-core>=1.8",
     "dbt-bigquery>=1.8",
